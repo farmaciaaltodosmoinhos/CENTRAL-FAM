@@ -1,12 +1,123 @@
 [build]
   publish = "."
-  functions = "netlify/functions"
-  command = "npm install"
+  command = "true"
 
 [functions]
+  directory = "netlify/functions"
   node_bundler = "esbuild"
 
+# Autenticação por farmácia (signup/login/sessão) — ver netlify/functions/auth.js
+[[redirects]]
+  from = "/api/auth/*"
+  to = "/.netlify/functions/auth/:splat"
+  status = 200
+
+# API do estado partilhado (Netlify Blobs) — ver netlify/functions/data.js
+[[redirects]]
+  from = "/api/data"
+  to = "/.netlify/functions/data"
+  status = 200
+
+# API de conteúdos pesados individuais (HTML/imagens grandes) — ver netlify/functions/asset.js
+[[redirects]]
+  from = "/api/asset/*"
+  to = "/.netlify/functions/asset/:splat"
+  status = 200
+
+# Conhecimento partilhado entre farmácias (FARMA IA, ponto 43, Função 4:
+# "aprendizagem multifarma") — nunca dados por farmácia, ver
+# netlify/functions/farma-aprendizagens.js
+[[redirects]]
+  from = "/api/farma-aprendizagens"
+  to = "/.netlify/functions/farma-aprendizagens"
+  status = 200
+
+# ---------------------------------------------------------------------------
+# Cabeçalhos — desempenho e segurança
+# ---------------------------------------------------------------------------
+
 [[headers]]
-  for = "/.netlify/functions/sync"
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    # 'unsafe-inline' + 'https:' em script-src/style-src/font-src são
+    # necessários porque os serviços do tipo HTML/ficheiro (carregados pela
+    # farmácia) são abertos como blob: e HERDAM esta mesma CSP (blob: não
+    # tem resposta HTTP própria para enviar o seu próprio cabeçalho). Sem
+    # 'https:', qualquer documento que use um CDN externo (ex.: cdnjs para
+    # bibliotecas JS, Google Fonts) fica bloqueado e deixa de funcionar
+    # dentro da Central mesmo funcionando perfeitamente fora dela. A nossa
+    # própria app nunca carrega nada de fora (só 'self'), por isso esta
+    # abertura só afeta os documentos carregados pela farmácia, que são
+    # conteúdo interno e confiado, não conteúdo de terceiros arbitrário.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https:; frame-src 'self' data: blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+
+# HTML — nunca em cache agressiva (garante que a próxima visita vê a versão mais recente)
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# Módulos JS e CSS — cache curta com revalidação (sem hashes de build, por isso
+# não usamos "immutable"; ainda assim evita novos pedidos em navegação repetida
+# dentro da mesma sessão, e o Service Worker trata o cache entre sessões).
+[[headers]]
+  for = "/src/*"
+  [headers.values]
+    Cache-Control = "public, max-age=600, must-revalidate"
+
+# scripts/*.mjs (ex.: dados-treino-farma.mjs) — ponto 43, Função 2: importado
+# dinamicamente pelo BROWSER a partir de src/farmaTreinoLocal.js (treino local
+# por farmácia). Um `import()` de módulo ES exige sempre um Content-Type
+# JavaScript válido — nunca deixar isto ao critério do tipo MIME por omissão
+# do servidor para uma extensão pouco comum como ".mjs".
+[[headers]]
+  for = "/scripts/*.mjs"
+  [headers.values]
+    Content-Type = "text/javascript; charset=utf-8"
+    Cache-Control = "public, max-age=600, must-revalidate"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=600, must-revalidate"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# A API nunca deve ser guardada em cache (tem de refletir sempre o estado atual).
+[[headers]]
+  for = "/api/*"
   [headers.values]
     Cache-Control = "no-store"
+
+# Os módulos (ex. Manipulados, Documentos) são abertos dentro de um <iframe> da
+# própria Central, na mesma origem (ver src/ui/main-content.js) — precisam de
+# poder ser enquadrados por essa página, o que o "frame-ancestors 'none'" /
+# "X-Frame-Options: DENY" acima (pensados para o resto do site, que nunca é
+# suposto ser enquadrado por ninguém) bloqueariam. Aqui é só permitido serem
+# enquadrados pela própria origem — nunca por um site de terceiros.
+[[headers]]
+  for = "/modulos/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    # frame-src 'self' data: blob: — os módulos (ex.: Documentos) pré-visualizam
+    # PDFs e imagens carregados pela farmácia dentro de um <iframe src="data:...">
+    # ou "blob:...". Sem isto, o próprio CSP bloqueia essa pré-visualização
+    # ("conteúdo bloqueado"), mesmo sendo conteúdo interno e confiado.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https:; frame-src 'self' data: blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; upgrade-insecure-requests"
+
+# ---------------------------------------------------------------------------
+# Compressão: o Netlify aplica Brotli/Gzip automaticamente a todos os assets
+# de texto (html, css, js, json, svg) — nada a configurar aqui.
+# ---------------------------------------------------------------------------
