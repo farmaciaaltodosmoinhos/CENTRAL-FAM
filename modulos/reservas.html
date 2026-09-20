@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reservas · Central Operacional</title>
+<link rel="stylesheet" href="../assets/module-chrome.css">
+<style>
+  :root{
+    --ink:#1c2521;
+    --ink-soft:#4a5650;
+    --paper:#f6f5f0;
+    --panel:#ffffff;
+    --line:#dcdcd2;
+    --line-soft:#ececE4;
+    --brand:#2b7a4b;
+    --brand-deep:#1f543e;
+    --brand-soft:#e3f2e8;
+    --ok:#1f7a4d;
+    --ok-bg:#e6f4ec;
+    --ok-line:#b9e0c8;
+    --bad:#a4342a;
+    --bad-bg:#fbebe8;
+    --bad-line:#eec3bc;
+    --warn:#9a6b16;
+    --warn-bg:#fbf1dc;
+    --warn-line:#eed9a8;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    --serif: "Source Serif 4", "Georgia", serif;
+    --sans: "Inter", "Helvetica Neue", Arial, sans-serif;
+    --radius: 10px;
+    --shadow: 0 1px 2px rgba(20,30,25,0.04), 0 6px 20px -8px rgba(20,30,25,0.12);
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    background-image: radial-gradient(circle at 1px 1px, rgba(164,52,42,0.06) 1px, transparent 1px);
+    background-size: 22px 22px;
+    color:var(--ink);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  ::selection{ background:#f3c9c2; }
+  .wrap{ max-width:1240px; margin:0 auto; padding:28px 20px 100px; }
+
+  header.top{
+    display:flex; align-items:flex-end; justify-content:space-between; gap:24px;
+    padding-bottom:20px; border-bottom:2px solid var(--ink); margin-bottom:22px; flex-wrap:wrap;
+  }
+  .brandmark{ display:flex; align-items:center; gap:14px; }
+  .brandmark img{ height:48px; width:auto; display:block; }
+  h1{ font-family:var(--serif); font-weight:700; font-size:26px; line-height:1.1; margin:0; letter-spacing:-0.01em; }
+  h1 small{ display:block; font-family:var(--sans); font-weight:500; font-size:13px; color:var(--ink-soft);
+    letter-spacing:0.04em; text-transform:uppercase; margin-top:4px; }
+  .top-stats{ display:flex; gap:22px; font-family:var(--mono); font-size:12px; color:var(--ink-soft); }
+  .top-stats b{ display:block; font-family:var(--serif); font-size:19px; color:var(--ink); font-weight:600; }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:22px 24px; margin-bottom:20px;
+  }
+  .panel h2{ font-family:var(--serif); font-size:16px; font-weight:700; margin:0 0 14px; color:var(--ink); }
+  .panel h2 small{ font-family:var(--sans); font-weight:500; color:var(--ink-soft); font-size:12px; margin-left:8px; }
+
+  /* upload dropzone */
+  .dropzone{
+    border:2px dashed var(--line); border-radius:var(--radius); padding:34px 20px;
+    text-align:center; cursor:pointer; transition:border-color .15s ease, background .15s ease;
+    background:var(--paper);
+  }
+  .dropzone:hover, .dropzone.drag{ border-color:var(--brand); background:var(--brand-soft); }
+  .dropzone .dz-icon{ font-size:30px; margin-bottom:8px; }
+  .dropzone .dz-title{ font-weight:600; font-size:14px; margin-bottom:4px; }
+  .dropzone .dz-sub{ font-size:12.5px; color:var(--ink-soft); }
+  .dropzone input[type=file]{ display:none; }
+
+  .file-chip{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    background:var(--ok-bg); border:1px solid var(--ok-line); color:var(--ok);
+    border-radius:8px; padding:10px 14px; font-size:13px; font-weight:600; margin-top:14px;
+  }
+  .file-chip button{
+    background:none; border:none; color:var(--ok); font-weight:700; cursor:pointer; font-size:13px;
+    text-decoration:underline; padding:0;
+  }
+  .error-chip{
+    background:var(--bad-bg); border:1px solid var(--bad-line); color:var(--bad);
+    border-radius:8px; padding:10px 14px; font-size:13px; font-weight:600; margin-top:14px;
+  }
+
+  /* controls grid */
+  .controls-grid{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(190px,1fr)); gap:16px 20px;
+  }
+  .field label{ display:block; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--ink-soft); margin-bottom:6px; }
+  .field input[type=text], .field input[type=number], .field select{
+    width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:7px;
+    font-family:var(--sans); font-size:13.5px; color:var(--ink); background:#fff;
+  }
+  .field input[type=text]:focus, .field input[type=number]:focus, .field select:focus{
+    outline:none; border-color:var(--brand);
+  }
+  .checkfield{ display:flex; align-items:center; gap:8px; padding-top:22px; }
+  .checkfield input{ width:16px; height:16px; accent-color:var(--brand); }
+  .checkfield label{ font-size:13px; font-weight:600; color:var(--ink); }
+
+  .zoom-row{ display:flex; align-items:center; gap:12px; }
+  .zoom-row input[type=range]{ flex:1; accent-color:var(--brand); }
+  .zoom-row span{ font-family:var(--mono); font-size:12.5px; color:var(--ink-soft); min-width:42px; text-align:right; }
+
+  .actions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; }
+  .btn{
+    font-family:var(--sans); font-weight:700; font-size:13.5px; border-radius:8px; border:1px solid var(--line);
+    padding:11px 18px; cursor:pointer; background:#fff; color:var(--ink); transition:transform .1s ease, box-shadow .15s ease;
+  }
+  .btn:hover{ transform:translateY(-1px); box-shadow:var(--shadow); }
+  .btn.primary{ background:var(--brand); border-color:var(--brand); color:#fff; }
+  .btn.primary:hover{ background:var(--brand-deep); border-color:var(--brand-deep); }
+  .btn.ghost{ background:transparent; }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; transform:none; box-shadow:none; }
+
+  /* preview */
+  .preview-shell{ overflow:auto; border:1px solid var(--line); border-radius:var(--radius); background:#e9e8e2; padding:22px; }
+  .page-sheet{
+    background:#fff; width:210mm; min-height:auto; margin:0 auto 18px; box-shadow:0 4px 18px rgba(20,30,25,.18);
+    padding:14mm 12mm; transform-origin:top center; border-radius:3px; overflow:hidden; position:relative;
+  }
+  .page-sheet::before{
+    content:""; position:absolute; top:0; left:0; right:0; height:5px;
+    background:var(--tbl-header-bg, var(--brand-deep));
+  }
+  .page-sheet:last-child{ margin-bottom:0; }
+  .sheet-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px;
+    padding-bottom:12px; margin-bottom:16px; margin-top:6px; border-bottom:1px solid var(--line); position:relative; }
+  .sheet-head::after{
+    content:""; position:absolute; left:0; bottom:-1px; width:64px; height:2px;
+    background:var(--tbl-header-bg, var(--brand-deep));
+  }
+  .sheet-head .sh-title{ font-family:var(--serif); font-weight:700; font-size:21px; letter-spacing:-.01em; }
+  .sheet-head .sh-title small{ display:block; font-family:var(--sans); font-weight:600; font-size:10.5px;
+    color:var(--tbl-header-bg, var(--brand-deep)); text-transform:uppercase; letter-spacing:.09em; margin-bottom:5px; }
+  .sheet-head img{ height:152px; width:auto; object-fit:contain; }
+  .sheet-page-no{ font-family:var(--mono); font-size:9.5px; color:var(--ink-soft); text-align:right; margin-top:10px; letter-spacing:.02em; }
+
+  table.res-table{ width:100%; border-collapse:collapse; font-family:var(--sans); }
+  table.res-table thead th{
+    text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.07em;
+    color:var(--tbl-header-fg, #fff);
+    background:var(--tbl-header-bg, var(--brand-deep));
+    padding:9px 10px; border:none;
+  }
+  table.res-table thead th:first-child{ border-top-left-radius:4px; }
+  table.res-table thead th:last-child{ border-top-right-radius:4px; }
+  table.res-table thead th.num, table.res-table tbody td.num{ text-align:right; }
+  table.res-table tbody td{
+    padding:8px 10px; border:none; border-bottom:1px solid var(--line-soft); font-size:11.5px; vertical-align:top;
+  }
+  table.res-table tbody tr:last-child td{ border-bottom:2px solid var(--tbl-header-bg, var(--brand-deep)); }
+  table.res-table tbody tr:nth-child(even){ background:var(--tbl-zebra, #faf9f6); }
+  table.res-table tbody tr{ transition:background .1s ease; }
+  table.res-table td.produto-cell{ font-family:var(--serif); font-size:12px; color:var(--ink); }
+  table.res-table td.produto-cell .cnp-inline{ display:block; font-family:var(--mono); font-size:9.5px; color:var(--ink-soft); margin-top:1px; }
+  table.res-table td.reserva-cell{ font-family:var(--mono); font-size:11px; color:var(--ink-soft); }
+  table.res-table tbody td.qty{
+    font-family:var(--mono); font-weight:700; text-align:center; color:var(--tbl-header-bg, var(--brand-deep));
+    font-size:12.5px;
+  }
+  table.res-table tbody td.qty .qty-badge{
+    display:inline-block; min-width:24px; padding:2px 7px; border-radius:20px;
+    background:color-mix(in srgb, var(--tbl-header-bg, var(--brand-deep)) 12%, #fff);
+  }
+
+  .sheet-foot{
+    display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+    margin-top:10px; padding-top:8px; border-top:1px dashed var(--line);
+    font-family:var(--mono); font-size:10px; color:var(--ink-soft);
+  }
+  .sheet-foot b{ color:var(--ink); font-weight:700; }
+
+  .preview-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+  .preview-toolbar h2{ margin:0; }
+
+  .color-row{ display:flex; align-items:center; gap:8px; }
+  .color-row input[type=color]{
+    width:38px; height:32px; border:1px solid var(--line); border-radius:6px; padding:2px; cursor:pointer; background:#fff;
+  }
+  .color-row .swatch-label{ font-family:var(--mono); font-size:11px; color:var(--ink-soft); }
+  .btn.small{ padding:7px 12px; font-size:12px; }
+
+  .page-sheet.landscape{ width:297mm; }
+
+  .empty-state{ text-align:center; padding:50px 20px; color:var(--ink-soft); font-size:13.5px; }
+  .empty-state .es-icon{ font-size:34px; margin-bottom:10px; }
+
+  .module-back{
+    display:flex; align-items:center; gap:6px;
+    background:var(--brand-soft); border:1px solid var(--brand); border-radius:999px;
+    padding:6px 13px; text-decoration:none; color:var(--brand-deep);
+    font-family:var(--sans); font-size:12px; font-weight:600;
+    transition:background .15s ease; white-space:nowrap;
+  }
+  .module-back:hover{ background:#f0d2cd; }
+
+  html, body, .page-sheet, .page-sheet *{
+    -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact;
+  }
+  @media print{
+    body{ background:#fff; }
+    body *{ visibility:hidden; }
+    .print-area, .print-area *{ visibility:visible; }
+    .print-area{ position:absolute; top:0; left:0; width:100%; }
+    .preview-shell{ border:none; background:#fff; padding:0; overflow:visible; }
+    .page-sheet{ box-shadow:none; margin:0; width:auto !important; padding:0; transform:none !important; page-break-after:always;
+      -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    .page-sheet:last-child{ page-break-after:auto; }
+    .page-sheet, .page-sheet *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; color-adjust:exact !important; }
+    table.res-table thead{ display:table-header-group; }
+  }
+  #dynamicPageStyle{ display:none; }
+  @media (max-width:720px){
+    .page-sheet{ width:100%; padding:6mm; }
+  }
+</style>
+</head>
+<body>
+
+<div class="mc-standalone-bar" id="mcStandaloneBar"><a href="/">← Voltar à Central Operacional</a></div>
+<div class="wrap no-print">
+  <header class="top">
+    <div class="brandmark">
+      <img id="logoImg" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAADrklEQVR4nO2dS5LTQBQEBcFpYAungePBaWAL14EFoQlZliz1930qcz0TdL/KrrYtE7MsAKDLO+sFzOD7549/a3/3268/qWeUanMtQZeSRYzQm5gZ+BVRhQi3aE+hnxFJhhALjRD6Gd5lcL24yMHv8SqCy0VlCn6PNxFcLSZz8Hu8iOBiEUrB77EW4b3lP74s2uEvi/3+zeyz3rhHLNrApAEI/xiLuUw1juDvM6sNpjUA4Zcxa15TBCD8OmbMbWjNEHw/Rl0JwxqA8Psyap5DBCD8MYyYa3cBCH8svefbVQDCn0PPOXcTgPDn0mveXQQgfBt6zN38YRDY0iwAp9+W1vk3CUD4PmjJoVoAwvdFbR68BhCnSgBOv09qcil+wBA9/K8/f1/+zI8vnyasZBwlD46kroA74Zf8XAaKBIh8+ktDjSxBSU63BVAKv/X3PHA3r/RXQGuIkSW4wy0BIp9+Ze7klr4B4DWXAnD6Y3OVHw0gzksBOP05eJUjDSDOqQCc/lyc5UkDiIMA4hwKQP3n5ChXGkAcBBDnSQDqPzf7fGkAcRBAHAQQ50EA7n8NtjnTAOIggDgIIA4CiPPBegErnr99O2ptHv4H0lsDWL4D8Bz+SCz3veZtfgWohr9ivX9TAaw37wXLOZgJQPiPWM3D/AoAWxBAHAQQBwHEQQBxEEAcBBAHAcQxE8DDgxBPWM3DtAGQ4D+WczC/AtQlsN7/mwCWf8XaeghWWO57zdvNF0JGDaPHQ5bMgppfAWALAoiDAOIggDgPAli+E4B5bHOmAcRBAHEQQJwnAXgdkJt9vjSAOAggzqEAXAM5OcqVBhAHAcQ5FYBrIBdnedIA4rwUgBbIwascaQBxLgWgBWJzlR8NIM4tAWiBmNzJLX0DtH6jN/M3gpelQIDILVAbYuTw7+ZV1ABKEiiEvywCV8CWu6FGDr+UqhPN3xXwS2lLVzVA5KsgMzW5SF0B8Ey1ALSAL2rzaGoAJPBBSw7NVwAS2NI6f14DiNNFAFrAhh5z79YASDCXXvPuegUgwRx6zrn7awAkGEvv+Q55EYgEYxgx12HvApCgL6PmOSUkHh7VM/ogTfkcgDaoY8bcpn0QhARlzJqXSShcCefMPigmHwXTBsdYzMU8CNrA9kCYPwxSbwPr/bsavlIbWAe/4mIRezKL4CX4FVeL2ZNJBG/Br7hc1J7IIngNfsX14o6IIIP30LeEWegRnmSIFPqWkIs+Y6YQUQPfk2ITV7SIkSVogEP+AY+dYPUO9yLpAAAAAElFTkSuQmCC" alt="Logótipo">
+      <h1>Reservas<small>Gerador de tabelas de reservas em PDF · <span id="brandTagFarmacia"></span></small></h1>
+    </div>
+    <div class="top-stats">
+      <div>Linhas carregadas<b id="statRows">—</b></div>
+      <div>Produtos distintos<b id="statProducts">—</b></div>
+      <div>Páginas (impressão)<b id="statPages">—</b></div>
+      <a class="module-back" href="/" onclick="event.preventDefault(); voltarACentral();">← Voltar à Central</a>
+    </div>
+  </header>
+
+  <section class="panel">
+    <h2>1. Carregar ficheiro do Sifarma <small>.csv ou .xlsx</small></h2>
+    <div class="dropzone" id="dropzone">
+      <div class="dz-icon">📄</div>
+      <div class="dz-title">Arraste o ficheiro para aqui, ou clique para escolher</div>
+      <div class="dz-sub">Exportação de reservas do dia (CSV ou Excel do Sifarma)</div>
+      <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
+    </div>
+    <div id="fileStatus"></div>
+  </section>
+
+  <section class="panel" id="controlsPanel" style="display:none;">
+    <h2>2. Ajustar tabela</h2>
+    <div class="controls-grid">
+      <div class="field">
+        <label for="titleInput">Título da tabela</label>
+        <input type="text" id="titleInput">
+      </div>
+      <div class="field">
+        <label for="sortSelect">Ordenar por</label>
+        <select id="sortSelect">
+          <option value="produto">Produto (A–Z)</option>
+          <option value="produto_desc">Produto (Z–A)</option>
+          <option value="cliente">Cliente (A–Z)</option>
+          <option value="reserva">Nº de reserva</option>
+          <option value="qtd_desc">Quantidade (maior primeiro)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="rowsPerPage">Linhas por página</label>
+        <select id="rowsPerPage">
+          <option value="0">Automático (caber numa folha A4)</option>
+          <option value="15">15 por página</option>
+          <option value="20">20 por página</option>
+          <option value="25">25 por página</option>
+          <option value="30">30 por página</option>
+          <option value="40">40 por página</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="orientationSelect">Orientação da folha</label>
+        <select id="orientationSelect">
+          <option value="portrait">Retrato (vertical)</option>
+          <option value="landscape">Paisagem (horizontal)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="zoomRange">Zoom da tabela</label>
+        <div class="zoom-row">
+          <input type="range" id="zoomRange" min="70" max="130" value="100" step="5">
+          <span id="zoomVal">100%</span>
+        </div>
+      </div>
+      <div class="checkfield">
+        <input type="checkbox" id="onlyReserved" checked>
+        <label for="onlyReserved">Apenas estado "RESERVADA"</label>
+      </div>
+    </div>
+    <div class="controls-grid" style="margin-top:16px;">
+      <div class="field">
+        <label>Cores da tabela</label>
+        <div class="color-row">
+          <input type="color" id="headerColor" value="#1f543e">
+          <span class="swatch-label">Cabeçalho</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <div class="color-row">
+          <input type="color" id="headerTextColor" value="#ffffff">
+          <span class="swatch-label">Texto do cabeçalho</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <div class="color-row">
+          <input type="color" id="zebraColor" value="#faf9f6">
+          <span class="swatch-label">Linhas alternadas</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <button class="btn ghost small" id="btnResetColors" type="button">↺ Repor cores da marca</button>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="btnPrint">🖨️ Gerar PDF</button>
+      <button class="btn ghost" id="btnReset">Limpar ficheiro</button>
+    </div>
+  </section>
+
+  <section class="panel" id="previewPanel" style="display:none;">
+    <div class="preview-toolbar">
+      <h2>3. Pré-visualização <small style="font-family:var(--sans);font-weight:500;color:var(--ink-soft);font-size:11.5px;">— exatamente o que sai no PDF</small></h2>
+      <button class="btn primary" id="btnPrintTop">🖨️ Imprimir / Gerar PDF</button>
+    </div>
+    <div class="preview-shell" id="previewShell">
+      <div id="previewInner" class="print-area"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="emptyPanel">
+    <div class="empty-state">
+      <div class="es-icon">🗂️</div>
+      Carregue um ficheiro de reservas para começar.
+    </div>
+  </section>
+</div>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="../assets/module-chrome.js"></script>
+<script type="module">
+import { aoExpirarSessao } from "../src/db.js";
+import { getToken, limparSessao, getPerfil } from "../src/authClient.js";
+
+function voltarACentral(){
+  window.top.location.href = "/";
+}
+window.voltarACentral = voltarACentral;
+
+aoExpirarSessao(() => {
+  limparSessao();
+  voltarACentral();
+});
+
+if(!getToken()) voltarACentral();
+
+/* Cache do estado partilhado só para efeitos de identidade visual (nome e
+   logótipo da farmácia) — fonte única de verdade: `config.nomeFarmacia`/
+   `config.logo`, definidos pela farmácia em Configurações da Central.
+   Esta ferramenta não tem estado próprio a gravar, por isso só faz uma
+   leitura (GET) ao arrancar, apenas para saber o nome/logótipo atuais. */
+let ESTADO_BRANDING_CACHE = null;
+/* Logótipo movido para o seu próprio blob (/api/asset/branding-logo) — ver
+   carregarLogoAsset() abaixo. */
+let ASSET_LOGO_CACHE = null;
+
+function nomeFarmaciaAtual(){
+  return ESTADO_BRANDING_CACHE?.config?.nomeFarmacia || getPerfil()?.nomeFarmacia || 'Farmácia';
+}
+
+function logoFarmaciaAtual(){
+  return ASSET_LOGO_CACHE || ESTADO_BRANDING_CACHE?.config?.logo || null;
+}
+
+function aplicarBrandingFarmacia(){
+  const tag = document.getElementById('brandTagFarmacia');
+  if(tag) tag.textContent = nomeFarmaciaAtual();
+  const logo = logoFarmaciaAtual();
+  const img = document.getElementById('logoImg');
+  if(img && logo) img.src = logo;
+}
+
+aplicarBrandingFarmacia();
+
+(async function carregarBrandingInicial(){
+  try{
+    const token = getToken();
+    if(!token) return;
+    const res = await fetch('/api/data', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+    if(res.status === 401){ limparSessao(); voltarACentral(); return; }
+    if(!res.ok) return;
+    ESTADO_BRANDING_CACHE = await res.json();
+    aplicarBrandingFarmacia();
+  }catch(e){ /* mantém o nome do registo/logótipo genérico como reserva */ }
+})();
+
+async function carregarLogoAsset(){
+  const cached = window.ModuleChrome.getCachedBranding();
+  if(cached && cached.logo){ ASSET_LOGO_CACHE = cached.logo; aplicarBrandingFarmacia(); }
+  const token = getToken();
+  if(!token) return;
+  const logo = await window.ModuleChrome.fetchLogoAsset(token);
+  if(logo){ ASSET_LOGO_CACHE = logo; aplicarBrandingFarmacia(); }
+  window.ModuleChrome.cacheBranding(nomeFarmaciaAtual(), logoFarmaciaAtual());
+}
+carregarLogoAsset();
+
+(function(){
+  "use strict";
+
+  var state = { rows: [], loaded:false };
+
+  var els = {
+    dropzone: document.getElementById('dropzone'),
+    fileInput: document.getElementById('fileInput'),
+    fileStatus: document.getElementById('fileStatus'),
+    controlsPanel: document.getElementById('controlsPanel'),
+    previewPanel: document.getElementById('previewPanel'),
+    emptyPanel: document.getElementById('emptyPanel'),
+    titleInput: document.getElementById('titleInput'),
+    sortSelect: document.getElementById('sortSelect'),
+    rowsPerPage: document.getElementById('rowsPerPage'),
+    orientationSelect: document.getElementById('orientationSelect'),
+    headerColor: document.getElementById('headerColor'),
+    headerTextColor: document.getElementById('headerTextColor'),
+    zebraColor: document.getElementById('zebraColor'),
+    btnResetColors: document.getElementById('btnResetColors'),
+    zoomRange: document.getElementById('zoomRange'),
+    zoomVal: document.getElementById('zoomVal'),
+    onlyReserved: document.getElementById('onlyReserved'),
+    previewInner: document.getElementById('previewInner'),
+    statRows: document.getElementById('statRows'),
+    statProducts: document.getElementById('statProducts'),
+    statPages: document.getElementById('statPages'),
+    btnPrint: document.getElementById('btnPrint'),
+    btnPrintTop: document.getElementById('btnPrintTop'),
+    btnReset: document.getElementById('btnReset')
+  };
+
+  // ---------- helpers ----------
+  function stripAccents(s){
+    return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  }
+  function normHeader(s){
+    return stripAccents(String(s||'')).toUpperCase().replace(/\s+/g,' ').trim();
+  }
+  function todayLabel(){
+    var d = new Date();
+    var dd = String(d.getDate()).padStart(2,'0');
+    var mm = String(d.getMonth()+1).padStart(2,'0');
+    var yyyy = d.getFullYear();
+    return dd+'/'+mm+'/'+yyyy;
+  }
+
+  // aliases -> canonical field
+  var HEADER_MAP = {
+    'N.O RESERVA': 'reserva', 'N RESERVA':'reserva', 'NO RESERVA':'reserva', 'Nº RESERVA':'reserva',
+    'CLIENTE': 'cliente',
+    'CNP': 'cnp',
+    'DESIGNACAO': 'produto',
+    'QT. RESERVADA': 'qtd', 'QT RESERVADA':'qtd', 'QTD RESERVADA':'qtd', 'QUANTIDADE RESERVADA':'qtd',
+    'ESTADO': 'estado',
+    'DT. CRIACAO': 'data', 'DT CRIACAO': 'data', 'DATA CRIACAO':'data'
+  };
+
+  function mapRow(raw){
+    var out = {};
+    Object.keys(raw).forEach(function(k){
+      var nk = normHeader(k).replace(/º/g,'O').replace(/\./g,'.');
+      var canon = HEADER_MAP[normHeader(k).replace(/º/g,'O')] || HEADER_MAP[nk];
+      if (!canon){
+        // try loose contains match
+        var norm = normHeader(k).replace(/º/g,'O');
+        if (norm.indexOf('RESERVA') === 0 || norm.indexOf('N. RESERVA') !== -1 || norm.indexOf('NO RESERVA') !== -1) canon='reserva';
+        else if (norm.indexOf('CLIENTE') !== -1) canon='cliente';
+        else if (norm === 'CNP') canon='cnp';
+        else if (norm.indexOf('DESIGNA') !== -1) canon='produto';
+        else if (norm.indexOf('QT') !== -1 && norm.indexOf('RESERVADA') !== -1) canon='qtd';
+        else if (norm === 'ESTADO') canon='estado';
+        else if (norm.indexOf('CRIA') !== -1) canon='data';
+      }
+      if (canon) out[canon] = raw[k];
+    });
+    return out;
+  }
+
+  function processRawRows(rawRows){
+    var mapped = rawRows.map(mapRow).filter(function(r){
+      return r.produto || r.cliente || r.reserva;
+    });
+    state.rows = mapped;
+    state.loaded = true;
+    els.titleInput.value = 'Reservas de ' + todayLabel();
+    els.controlsPanel.style.display = '';
+    els.previewPanel.style.display = '';
+    els.emptyPanel.style.display = 'none';
+    render();
+  }
+
+  function showError(msg){
+    els.fileStatus.innerHTML = '<div class="error-chip">⚠️ ' + msg + '</div>';
+  }
+  function showFileChip(name){
+    els.fileStatus.innerHTML = '<div class="file-chip"><span>✔ ' + name + ' carregado com sucesso</span>' +
+      '<button id="chipReset">trocar ficheiro</button></div>';
+    document.getElementById('chipReset').addEventListener('click', resetAll);
+  }
+
+  function parseCSVFile(file){
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      delimiter: '', // auto-detect (Sifarma uses ;)
+      encoding: 'UTF-8',
+      complete: function(res){
+        if (!res.data || !res.data.length){ showError('Não foi possível ler linhas do ficheiro CSV.'); return; }
+        processRawRows(res.data);
+        showFileChip(file.name);
+      },
+      error: function(err){ showError('Erro ao ler CSV: ' + err.message); }
+    });
+  }
+
+  function parseXLSXFile(file){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      try{
+        var wb = XLSX.read(new Uint8Array(e.target.result), { type:'array' });
+        var sheet = wb.Sheets[wb.SheetNames[0]];
+        var json = XLSX.utils.sheet_to_json(sheet, { defval:'' });
+        if (!json.length){ showError('A folha de cálculo parece estar vazia.'); return; }
+        processRawRows(json);
+        showFileChip(file.name);
+      }catch(err){
+        showError('Erro ao ler Excel: ' + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function handleFile(file){
+    if (!file) return;
+    var name = file.name.toLowerCase();
+    if (name.endsWith('.csv')) parseCSVFile(file);
+    else if (name.endsWith('.xlsx') || name.endsWith('.xls')) parseXLSXFile(file);
+    else showError('Formato não suportado. Use um ficheiro .csv ou .xlsx.');
+  }
+
+  // ---------- upload UI wiring ----------
+  els.dropzone.addEventListener('click', function(){ els.fileInput.click(); });
+  els.fileInput.addEventListener('change', function(e){ handleFile(e.target.files[0]); });
+  ['dragover','dragenter'].forEach(function(evt){
+    els.dropzone.addEventListener(evt, function(e){ e.preventDefault(); els.dropzone.classList.add('drag'); });
+  });
+  ['dragleave','drop'].forEach(function(evt){
+    els.dropzone.addEventListener(evt, function(e){ e.preventDefault(); els.dropzone.classList.remove('drag'); });
+  });
+  els.dropzone.addEventListener('drop', function(e){
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+
+  function resetAll(){
+    state.rows = []; state.loaded = false;
+    els.fileInput.value = '';
+    els.fileStatus.innerHTML = '';
+    els.controlsPanel.style.display = 'none';
+    els.previewPanel.style.display = 'none';
+    els.emptyPanel.style.display = '';
+    els.statRows.textContent = '—'; els.statProducts.textContent = '—'; els.statPages.textContent = '—';
+  }
+  els.btnReset.addEventListener('click', resetAll);
+  function gerarFolhaImpressao(){
+    window.print();
+    if(window.ModuleChrome) window.ModuleChrome.registarUso('reservas', 'gerar_folha');
+  }
+  els.btnPrint.addEventListener('click', gerarFolhaImpressao);
+  els.btnPrintTop.addEventListener('click', gerarFolhaImpressao);
+
+  // ---------- sorting / filtering ----------
+  function getFilteredSorted(){
+    var rows = state.rows.slice();
+    if (els.onlyReserved.checked){
+      rows = rows.filter(function(r){
+        return !r.estado || normHeader(r.estado) === 'RESERVADA';
+      });
+    }
+    var mode = els.sortSelect.value;
+    function cmpStr(a,b){ return stripAccents(String(a||'')).localeCompare(stripAccents(String(b||'')), 'pt'); }
+    rows.sort(function(a,b){
+      switch(mode){
+        case 'produto': return cmpStr(a.produto, b.produto);
+        case 'produto_desc': return cmpStr(b.produto, a.produto);
+        case 'cliente': return cmpStr(a.cliente, b.cliente);
+        case 'reserva': return (parseInt(a.reserva,10)||0) - (parseInt(b.reserva,10)||0);
+        case 'qtd_desc': return (parseFloat(b.qtd)||0) - (parseFloat(a.qtd)||0);
+        default: return cmpStr(a.produto, b.produto);
+      }
+    });
+    return rows;
+  }
+
+  // ---------- rendering ----------
+  var AUTO_ROWS_ESTIMATE = 26; // rows that comfortably fit one A4 page at 100% zoom
+
+  function esc(s){
+    return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function chunk(arr, size){
+    if (!size || size<=0) return [arr];
+    var out = [];
+    for (var i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size));
+    return out;
+  }
+
+  function buildTableHTML(rows){
+    var body = rows.map(function(r){
+      return '<tr>' +
+        '<td class="reserva-cell num">' + esc(r.reserva) + '</td>' +
+        '<td>' + esc(r.cliente) + '</td>' +
+        '<td class="produto-cell">' + esc(r.produto) + (r.cnp ? '<span class="cnp-inline">CNP ' + esc(r.cnp) + '</span>' : '') + '</td>' +
+        '<td class="qty"><span class="qty-badge">' + esc(r.qtd) + '</span></td>' +
+      '</tr>';
+    }).join('');
+    return '<table class="res-table">' +
+      '<thead><tr>' +
+        '<th class="num" style="width:10%;">Nº Reserva</th>' +
+        '<th style="width:24%;">Cliente</th>' +
+        '<th>Designação</th>' +
+        '<th style="width:11%;text-align:center;">Qtd.</th>' +
+      '</tr></thead>' +
+      '<tbody>' + (body || '<tr><td colspan="4" style="text-align:center;color:var(--ink-soft);padding:20px;">Sem resultados com os filtros atuais.</td></tr>') + '</tbody>' +
+    '</table>';
+  }
+
+  var DEFAULT_COLORS = { header:'#1f543e', headerText:'#ffffff', zebra:'#faf9f6' };
+
+  function applyColors(){
+    document.documentElement.style.setProperty('--tbl-header-bg', els.headerColor.value);
+    document.documentElement.style.setProperty('--tbl-header-fg', els.headerTextColor.value);
+    document.documentElement.style.setProperty('--tbl-zebra', els.zebraColor.value);
+  }
+
+  function ensureDynamicPageStyle(){
+    var tag = document.getElementById('dynamicPageStyle');
+    if (!tag){
+      tag = document.createElement('style');
+      tag.id = 'dynamicPageStyle';
+      document.head.appendChild(tag);
+    }
+    return tag;
+  }
+  function applyOrientation(){
+    var orientation = els.orientationSelect.value; // portrait | landscape
+    var tag = ensureDynamicPageStyle();
+    tag.textContent = '@media print{ @page{ size:A4 ' + orientation + '; margin:14mm 12mm; } }';
+  }
+
+  function render(){
+    if (!state.loaded) return;
+    applyColors();
+    applyOrientation();
+    var rows = getFilteredSorted();
+    var perPage = parseInt(els.rowsPerPage.value,10) || 0;
+    // perPage === 0 -> "auto": one flowing sheet; the browser paginates naturally when printing
+    var pages = perPage > 0 ? chunk(rows, perPage) : [rows];
+    if (!pages.length) pages = [[]];
+
+    var title = els.titleInput.value || ('Reservas de ' + todayLabel());
+    var zoom = els.zoomRange.value;
+    var logoSrc = document.getElementById('logoImg').src;
+    var isLandscape = els.orientationSelect.value === 'landscape';
+    var sheetWidth = isLandscape ? '297mm' : '210mm';
+    var totalQty = rows.reduce(function(sum,r){ return sum + (parseFloat(r.qtd)||0); }, 0);
+
+    var html = pages.map(function(pageRows, idx){
+      var pageQty = pageRows.reduce(function(sum,r){ return sum + (parseFloat(r.qtd)||0); }, 0);
+      return '<div class="page-sheet' + (isLandscape ? ' landscape' : '') + '" style="width:' + sheetWidth + ';transform:scale(' + (zoom/100) + ');">' +
+        '<div class="sheet-head">' +
+          '<div class="sh-title"><small>' + esc(nomeFarmaciaAtual()) + '</small>' + esc(title) + '</div>' +
+          '<img src="' + logoSrc + '" alt="logo">' +
+        '</div>' +
+        buildTableHTML(pageRows) +
+        '<div class="sheet-foot">' +
+          '<span>' + pageRows.length + ' reserva' + (pageRows.length===1?'':'s') + ' nesta página &middot; <b>' + pageQty + '</b> unidade' + (pageQty===1?'':'s') + '</span>' +
+          (pages.length>1 ? '<span>Página ' + (idx+1) + ' de ' + pages.length + ' &middot; total do dia: <b>' + rows.length + '</b> reservas / <b>' + totalQty + '</b> unid.</span>' : '<span>Total do dia: <b>' + rows.length + '</b> reservas / <b>' + totalQty + '</b> unid.</span>') +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    els.previewInner.innerHTML = html;
+
+    // stats
+    els.statRows.textContent = rows.length;
+    var distinctProducts = new Set(rows.map(function(r){ return normHeader(r.produto); })).size;
+    els.statProducts.textContent = distinctProducts;
+    els.statPages.textContent = pages.length;
+  }
+
+  [els.titleInput, els.sortSelect, els.rowsPerPage, els.onlyReserved, els.orientationSelect,
+   els.headerColor, els.headerTextColor, els.zebraColor].forEach(function(el){
+    el.addEventListener('input', render);
+    el.addEventListener('change', render);
+  });
+  els.btnResetColors.addEventListener('click', function(){
+    els.headerColor.value = DEFAULT_COLORS.header;
+    els.headerTextColor.value = DEFAULT_COLORS.headerText;
+    els.zebraColor.value = DEFAULT_COLORS.zebra;
+    render();
+  });
+  els.zoomRange.addEventListener('input', function(){
+    els.zoomVal.textContent = els.zoomRange.value + '%';
+    render();
+  });
+
+})();
+</script>
+</body>
+</html>

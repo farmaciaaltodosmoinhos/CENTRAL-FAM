@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manipulados · Central Operacional</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/module-chrome.css">
+<style>
+  :root{
+    --green-deep:#1f543e;
+    --green-mid:#2b7a4b;
+    --green-bright:#4f9c72;
+    --mint-bg:#e3f2e8;
+    --card:#FFFFFF;
+    --line:#DCEBE1;
+    --ink:#16241C;
+    --ink-soft:#5B6B61;
+    --amber:#C97F1E;
+    --amber-bg:#FCF1DE;
+    --red:#C0433B;
+    --red-bg:#FBE9E7;
+    --blue:#2E6FA3;
+    --blue-bg:#E7F1F9;
+    --grey-bg:#EEF2EF;
+    --radius:14px;
+    --shadow: 0 1px 2px rgba(19,74,44,0.06), 0 6px 20px rgba(19,74,44,0.05);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    font-family:'Inter',sans-serif;
+    background:var(--mint-bg);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{ min-height:100vh; }
+
+  /* ---------- CABEÇALHO COMPACTO DO MÓDULO (substitui a antiga sidebar
+     fixa de 272px — os filtros de estado passaram para a barra inferior,
+     ver assets/module-chrome.css/js) ---------- */
+  .mc-module-head{
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    background:linear-gradient(180deg,var(--green-deep) 0%, #0F3B22 100%);
+    color:#EAF6EE; padding:12px 18px; margin-bottom:18px;
+  }
+  .mc-module-head .brand-sub{font-weight:800;font-size:14px;}
+  .mc-module-head .brand-tag{font-size:11.5px;color:#B7E4C7;font-weight:600;}
+  .mc-module-head .stat-grid{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap;}
+  .mc-module-head .stat{background:rgba(255,255,255,.08);border-radius:10px;padding:5px 10px;font-size:11px;display:flex;gap:5px;align-items:baseline;}
+  .mc-module-head .stat b{font-size:13.5px;}
+  .mc-module-head .stat.warn b{color:#F3C77E;}
+
+  /* ---------- SIDEBAR (obsoleta — nunca mostrada; mantida só para não
+     partir seletores/ids antigos referenciados no resto do ficheiro) ---------- */
+  .sidebar{ display:none; }
+  .brand{
+    display:flex;
+    flex-direction:column;
+    gap:9px;
+  }
+  .brand-mark{
+    width:44px;
+    height:44px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:24px;
+    background:#fff;
+    border-radius:10px;
+    box-shadow:var(--shadow);
+  }
+  .brand-sub{font-size:11px;color:#B7E4C7;font-weight:600;letter-spacing:.3px;padding-left:2px;}
+  .brand-tag{font-size:11px;color:#E8F5EC;font-weight:700;letter-spacing:.2px;padding-left:2px;}
+  #brandLogoImg{width:44px;height:44px;border-radius:10px;object-fit:cover;box-shadow:var(--shadow);display:none;}
+
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .stat{
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.09);
+    border-radius:12px;
+    padding:12px 12px 10px;
+  }
+  .stat b{font-family:'Manrope',sans-serif;font-size:22px;font-weight:800;display:block;font-variant-numeric:tabular-nums;}
+  .stat span{font-size:10.5px;color:#AFDCBC;font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+  .stat.warn b{color:#F3C77E;}
+
+  .nav-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:#8FC3A0;font-weight:700;margin:4px 0 -10px;}
+  .filters{display:flex;flex-direction:column;gap:4px;}
+  .filter-btn{
+    display:flex;align-items:center;justify-content:space-between;
+    background:transparent;border:none;color:#DCF1E3;
+    padding:9px 10px;border-radius:9px;font-size:13.5px;font-weight:600;
+    cursor:pointer;text-align:left;font-family:'Inter',sans-serif;
+    transition:background .12s;
+  }
+  .filter-btn:hover{background:rgba(255,255,255,0.08);}
+  .filter-btn.active{background:var(--green-bright);color:#0B2E1B;}
+  .filter-btn .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:8px;}
+  .filter-btn count{
+    font-size:11px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;font-variant-numeric:tabular-nums;
+  }
+  .filter-btn.active count{background:rgba(11,46,27,0.25);color:#0B2E1B;}
+
+  .sidebar-foot{margin-top:auto;display:flex;flex-direction:column;gap:8px;}
+  .ghost-btn{
+    background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);color:#EAF6EE;
+    padding:9px 12px;border-radius:9px;font-size:12.5px;font-weight:600;cursor:pointer;
+    display:flex;align-items:center;gap:8px;font-family:'Inter',sans-serif;
+  }
+  .ghost-btn:hover{background:rgba(255,255,255,0.13);}
+
+  /* ---------- MAIN ---------- */
+  main{padding:28px clamp(16px,3vw,34px) 40px;min-width:0;}
+  .topbar{display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wrap;}
+  .topbar h1{font-family:'Manrope',sans-serif;font-size:21px;font-weight:800;margin:0;color:var(--green-deep);}
+  .search-wrap{position:relative;flex:1;min-width:220px;max-width:400px;}
+  .search-wrap input{
+    width:100%;padding:10px 14px 10px 36px;border-radius:10px;border:1px solid var(--line);
+    background:var(--card);font-size:13.5px;font-family:'Inter',sans-serif;color:var(--ink);
+  }
+  .search-wrap input:focus{outline:2px solid var(--green-bright);outline-offset:-1px;}
+  .search-wrap svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);opacity:.45;}
+  .btn-primary{
+    background:var(--green-mid);color:#fff;border:none;padding:10px 18px;border-radius:10px;
+    font-weight:700;font-size:13.5px;cursor:pointer;font-family:'Inter',sans-serif;
+    display:flex;align-items:center;gap:7px;box-shadow:var(--shadow);
+  }
+  .btn-primary:hover{background:var(--green-deep);}
+  .btn-primary.pulse{animation:pulseGlow 1.6s ease-in-out infinite;}
+  @keyframes pulseGlow{
+    0%,100%{box-shadow:0 0 0 0 rgba(201,127,30,0.45);}
+    50%{box-shadow:0 0 0 6px rgba(201,127,30,0);}
+  }
+  .btn-secondary{
+    background:var(--card);color:var(--green-deep);border:1px solid var(--line);padding:10px 16px;border-radius:10px;
+    font-weight:700;font-size:13.5px;cursor:pointer;font-family:'Inter',sans-serif;
+  }
+  .btn-secondary:hover{border-color:var(--green-bright);}
+
+  .empty{
+    background:var(--card);border:1px dashed var(--line);border-radius:var(--radius);
+    padding:60px 20px;text-align:center;color:var(--ink-soft);
+  }
+  .empty b{display:block;color:var(--ink);font-family:'Manrope',sans-serif;font-size:16px;margin-bottom:6px;}
+
+  .table-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow-x:auto;overflow-y:hidden;}
+  table{width:100%;min-width:900px;border-collapse:collapse;font-size:13px;}
+  thead th{
+    text-align:left;padding:12px 14px;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;
+    color:var(--ink-soft);border-bottom:1px solid var(--line);font-weight:700;background:#FAFDFB;
+    cursor:pointer;user-select:none;white-space:nowrap;
+  }
+  thead th:hover{color:var(--green-mid);}
+  tbody td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  tbody tr{cursor:pointer;transition:background .1s;}
+  tbody tr:hover{background:#F6FBF8;}
+  tbody tr:last-child td{border-bottom:none;}
+  .cell-name b{display:block;font-weight:600;}
+  .cell-name span{font-size:11.5px;color:var(--ink-soft);}
+  .mono{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);}
+  .badge{
+    display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+    font-size:11px;font-weight:700;white-space:nowrap;
+  }
+  .badge .dot{width:6px;height:6px;border-radius:50%;}
+  .days-tag{font-size:11px;color:var(--ink-soft);font-variant-numeric:tabular-nums;}
+  .days-tag.late{color:var(--red);font-weight:700;}
+  .row-actions{display:flex;gap:6px;}
+  .icon-btn{
+    width:28px;height:28px;border-radius:8px;border:1px solid var(--line);background:#fff;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink-soft);
+  }
+  .icon-btn:hover{border-color:var(--green-bright);color:var(--green-deep);}
+
+  /* status colors */
+  .s-pendente{background:var(--amber-bg);color:var(--amber);} .s-pendente .dot{background:var(--amber);}
+  .s-pendente2{background:#F3E8FB;color:#8034A8;} .s-pendente2 .dot{background:#8034A8;}
+  .s-preparacao{background:var(--blue-bg);color:var(--blue);} .s-preparacao .dot{background:var(--blue);}
+  .s-pronto{background:#E4F5EA;color:var(--green-mid);} .s-pronto .dot{background:var(--green-mid);}
+  .s-entregue{background:var(--grey-bg);color:#6B776F;} .s-entregue .dot{background:#6B776F;}
+  .s-cancelado{background:var(--red-bg);color:var(--red);} .s-cancelado .dot{background:var(--red);}
+
+  /* ---------- MODAL ---------- */
+  .overlay{
+    position:fixed;inset:0;background:rgba(15,40,26,0.45);backdrop-filter:blur(2px);
+    display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;z-index:50;
+  }
+  .overlay.open{display:flex;}
+  .modal{
+    background:var(--card);border-radius:18px;width:100%;max-width:640px;box-shadow:0 20px 60px rgba(0,0,0,0.25);
+    animation:pop .15s ease-out;
+  }
+  @keyframes pop{from{transform:translateY(8px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+  .modal-head{
+    padding:20px 26px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;
+  }
+  .modal-head h2{margin:0;font-family:'Manrope',sans-serif;font-size:17px;color:var(--green-deep);font-weight:800;}
+  .close-x{background:none;border:none;font-size:20px;cursor:pointer;color:var(--ink-soft);line-height:1;padding:4px;}
+  .modal-body{padding:22px 26px;}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .form-grid .full{grid-column:1/-1;}
+  label{font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-bottom:5px;}
+  input[type=text],input[type=email],input[type=tel],input[type=date],textarea,select{
+    width:100%;padding:9px 11px;border-radius:9px;border:1px solid var(--line);font-family:'Inter',sans-serif;
+    font-size:13.5px;color:var(--ink);background:#fff;
+  }
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--green-bright);outline-offset:-1px;}
+  .field-error{border-color:var(--red) !important;background:var(--red-bg) !important;}
+  textarea{resize:vertical;min-height:60px;}
+  .status-picker{display:flex;gap:6px;flex-wrap:wrap;}
+  .status-picker button{
+    border:1.5px solid var(--line);background:#fff;padding:7px 12px;border-radius:20px;font-size:12px;
+    font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;color:var(--ink-soft);
+  }
+  .status-picker button.sel{border-color:transparent;color:#fff;background:var(--green-mid);}
+  .status-picker button[data-s="pendente_utente"].sel{background:var(--amber);}
+  .status-picker button[data-s="pendente_farmacia"].sel{background:#8034A8;}
+  .status-picker button[data-s="preparacao"].sel{background:var(--blue);}
+  .status-picker button[data-s="pronto"].sel{background:var(--green-mid);}
+  .status-picker button[data-s="entregue"].sel{background:#6B776F;}
+  .status-picker button[data-s="cancelado"].sel{background:var(--red);}
+  .modal-foot{padding:16px 26px 22px;display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);}
+  .danger-link{background:none;border:none;color:var(--red);font-size:12.5px;font-weight:700;cursor:pointer;}
+  .foot-right{display:flex;gap:10px;}
+  /* Ponto 37: definições de email de Manipulados, ao estilo do AUE
+     (src ARMAZENISTAS/getEmailSettings de modulos/aue.html) — Google Apps
+     Script Web App opcional (a Central chama isto de "Google Sheets" no
+     dia-a-dia porque é lá que o Apps Script costuma estar ligado) + lista
+     de Fornecedores editável (adicionar/remover, um marcado como padrão). */
+  .section-title{
+    font-family:'Manrope',sans-serif;font-size:13px;font-weight:800;color:var(--green-deep);
+    margin:6px 0 -4px;padding-top:12px;border-top:1px solid var(--line);
+  }
+  .section-title.first{border-top:none;padding-top:0;margin-top:0;}
+  .fornecedor-row{border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;}
+  .fornecedor-row-head{display:flex;align-items:center;gap:8px;}
+  .fornecedor-row-head input[type=text]{flex:1;margin:0;font-weight:700;}
+  .fornecedor-row-fields{display:flex;gap:8px;}
+  .fornecedor-row-fields input{margin:0;}
+  .fornecedor-padrao{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink-soft);white-space:nowrap;cursor:pointer;}
+  .fornecedor-remover{background:none;border:none;color:var(--red);font-size:16px;cursor:pointer;padding:2px 4px;line-height:1;}
+  .fornecedor-remover:hover{color:#8a2e28;}
+  /* Ponto 38: editor do modelo de email — campos arrastáveis + pré-visualização */
+  .field-chip{
+    display:inline-block;background:var(--mint-bg);border:1.5px solid var(--green-mid);color:var(--green-deep);
+    border-radius:20px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:grab;user-select:none;margin:0 6px 6px 0;
+  }
+  .field-chip:hover{background:var(--green-mid);color:#fff;}
+  .field-chip:active{cursor:grabbing;}
+  .tpl-preview-box{border:1.5px solid var(--line);border-radius:10px;padding:14px;background:var(--mint-bg);}
+  .tpl-preview-box .tpl-subject{font-weight:800;color:var(--green-deep);margin-bottom:10px;font-size:13px;}
+  .tpl-preview-box .tpl-body{white-space:pre-wrap;font-size:12.5px;line-height:1.6;color:var(--ink);}
+
+  .module-back{
+    position:fixed;top:14px;right:18px;z-index:60;
+    background:#fff;border:1px solid var(--line);color:var(--green-deep);
+    padding:8px 14px;border-radius:999px;font-size:12.5px;font-weight:700;
+    box-shadow:var(--shadow);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px;
+  }
+  .module-back:hover{border-color:var(--green-bright);}
+  #fileHidden{display:none;}
+  .file-hint{font-size:11.5px;color:var(--ink-soft);margin-top:4px;}
+  .upload-box{
+    border:1.5px dashed var(--line);border-radius:10px;padding:16px;text-align:center;
+    font-size:12.5px;color:var(--ink-soft);cursor:pointer;background:#FAFDFB;font-weight:600;
+    transition:border-color .12s, background .12s;
+  }
+  .upload-box:hover{border-color:var(--green-bright);background:#F1FAF4;}
+  .attach-list{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+  .attach-item{
+    display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:9px;padding:7px 10px;
+    background:#fff;
+  }
+  .attach-item .thumb{
+    width:32px;height:32px;border-radius:6px;object-fit:cover;flex-shrink:0;background:var(--mint-bg);
+    display:flex;align-items:center;justify-content:center;font-size:14px;
+  }
+  .attach-item .thumb img{width:100%;height:100%;object-fit:cover;border-radius:6px;}
+  .attach-item .aname{flex:1;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .attach-item .aremove{background:none;border:none;color:var(--red);cursor:pointer;font-size:15px;padding:2px 4px;}
+  .attach-badge{
+    display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--ink-soft);font-weight:600;
+  }
+  .attach-item .thumb{cursor:zoom-in;}
+  .lightbox{
+    position:fixed;inset:0;background:rgba(10,25,17,0.88);display:none;
+    align-items:center;justify-content:center;z-index:200;padding:40px;cursor:zoom-out;
+  }
+  .lightbox.open{display:flex;}
+  .lightbox img{max-width:min(90vw,900px);max-height:88vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,0.5);}
+  .lightbox-close{
+    position:absolute;top:20px;right:24px;background:rgba(255,255,255,0.12);color:#fff;
+    width:38px;height:38px;border-radius:50%;font-size:18px;cursor:pointer;border:none;
+  }
+  .lightbox-close:hover{background:rgba(255,255,255,0.22);}
+
+  .toast{
+    position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:var(--green-deep);color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;font-weight:600;
+    opacity:0;pointer-events:none;transition:all .2s ease; box-shadow:var(--shadow); z-index:100;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  @media (max-width:900px){
+    .app{grid-template-columns:1fr;}
+    .sidebar{flex-direction:row;flex-wrap:wrap;padding:16px;}
+    .stat-grid{display:none;}
+    .filters{flex-direction:row;flex-wrap:wrap;}
+    main{padding:20px;}
+    .form-grid{grid-template-columns:1fr;}
+    thead th:nth-child(1),tbody td:nth-child(1){display:none;}
+  }
+
+  @media (max-width:900px){ }
+</style>
+<body>
+
+<div class="mc-standalone-bar" id="mcStandaloneBar">
+  <a href="/">← Voltar à Central Operacional</a>
+</div>
+<a class="module-back" href="/" onclick="event.preventDefault(); voltarACentral();">← Voltar à Central</a>
+
+<div class="app" id="appRoot">
+  <div class="mc-module-head">
+    <span class="brand-mark" id="brandMarkEmoji" aria-hidden="true">💊</span>
+    <img class="mc-logo" id="brandLogoImg" alt="Logótipo da farmácia" style="display:none;">
+    <div>
+      <div class="brand-sub">Gestão de Manipulados</div>
+      <div class="brand-tag" id="brandTagFarmacia"></div>
+    </div>
+    <div class="stat-grid" id="statGrid"></div>
+    <button class="filter-btn" onclick="manualResync()" title="Clicar para forçar nova sincronização" style="border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,.06);color:#EAF6EE;border-radius:10px;padding:5px 10px;font-size:11px;display:flex;gap:6px;align-items:center;">
+      <span class="dot" id="netlifySyncDot" style="width:7px;height:7px;border-radius:50%;background:#E8B23D;display:inline-block;"></span><span id="netlifySyncLabel">A sincronizar…</span> 🔄
+    </button>
+  </div>
+
+  <main>
+    <div class="topbar">
+      <h1>Pedidos de manipulados</h1>
+      <div class="search-wrap">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input id="searchInput" type="text" placeholder="Pesquisar por nome, NIF, receita, telefone…" oninput="render()">
+      </div>
+      <button class="btn-secondary" onclick="cycleSort()">↕ Ordenar: <span id="sortLabel">Mais recentes</span></button>
+      <button class="btn-secondary" onclick="document.getElementById('fileHidden').click()">⇪ Importar</button>
+      <button class="btn-secondary" onclick="exportCSV()">⇩ Exportar</button>
+      <button class="btn-secondary" onclick="openEmailSettingsModal()">✉ Email</button>
+      <input type="file" id="fileHidden" accept=".csv" onchange="handleImport(event)" style="display:none;">
+      <button class="btn-primary" onclick="openModal()">+ Novo pedido</button>
+    </div>
+
+    <div id="tableWrap"></div>
+  </main>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h2 id="modalTitle">Novo pedido</h2>
+        <span id="modalCreatedAt" style="font-size:11.5px;color:var(--ink-soft);font-weight:600;"></span>
+      </div>
+      <button class="close-x" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="full">
+          <label>Estado do pedido</label>
+          <div class="status-picker" id="statusPicker"></div>
+        </div>
+        <div><label>Como recebemos o pedido?</label>
+          <select id="f_canal" onchange="handleCanalChange()">
+            <option value="Email">Email</option>
+            <option value="Telefone">Telefone</option>
+            <option value="Balcão">Balcão</option>
+            <option value="WhatsApp">WhatsApp</option>
+          </select>
+        </div>
+        <div><label>Nome do operador que recebeu o pedido *</label><input type="text" id="f_operador" placeholder="Quem recebeu o pedido"></div>
+        <div class="full"><label>Nome do medicamento *</label><input type="text" id="f_medicamento" placeholder="ex: Minoxidil 5% + Finasterida 0,1% solução, 60ml"></div>
+        <div><label>Nº de reserva no Sifarma</label><input type="text" id="f_sifarma" placeholder="ex: 0004521"></div>
+        <div><label>Tipo de Prescrição *</label>
+          <select id="f_tipo_prescricao" onchange="handleTipoPrescricaoChange()">
+            <option value="Uso Humano">Uso Humano</option>
+            <option value="Uso Veterinário">Uso Veterinário</option>
+          </select>
+        </div>
+        <div><label id="f_nome_label">Nome do utente *</label><input type="text" id="f_nome"></div>
+        <div class="full" id="f_animal_wrap" style="display:none;"><label>Nome do animal de companhia *</label><input type="text" id="f_animal" placeholder="Nome do animal"></div>
+        <div><label>Telefone do utente *</label><input type="tel" id="f_telefone"></div>
+        <div><label>Email do utente</label><input type="email" id="f_email"></div>
+        <div><label>Número de Contribuinte (NIF) do utente *</label><input type="text" id="f_nif"></div>
+        <div><label>Nº de receita médica *</label><input type="text" id="f_receita"></div>
+        <div><label>Código de acesso / Dispensa</label><input type="text" id="f_acesso"></div>
+        <div><label>Código de direito de opção</label><input type="text" id="f_opcao"></div>
+        <div><label>Data prevista de entrega</label><input type="date" id="f_data"></div>
+        <div class="full">
+          <label>Ficheiro(s) da receita</label>
+          <div class="upload-box" onclick="document.getElementById('f_anexo_input').click()">
+            <span>⇪ Clique para carregar imagem, PDF ou outro ficheiro</span>
+            <input type="file" id="f_anexo_input" multiple style="display:none" onchange="handleAttach(event)">
+          </div>
+          <div class="attach-list" id="attachList"></div>
+          <div class="file-hint">Pode carregar vários ficheiros. Guardados localmente no browser.</div>
+        </div>
+        <div class="full"><label>Comentários</label><textarea id="f_comentarios" placeholder="Notas do laboratório, forma farmacêutica, dosagem, prazo de preparação…"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="danger-link" id="deleteBtn" onclick="deleteCurrent()">Eliminar pedido</button>
+      <div class="foot-right">
+        <button class="btn-secondary" id="requestBudgetBtn" style="display:none;" onclick="sendBudgetEmail()">✉ Pedir orçamento</button>
+        <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button class="btn-primary" onclick="saveCurrent()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="lightbox" id="lightboxOverlay" onclick="closeLightbox()">
+  <button class="close-x lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightboxImg" src="" alt="Receita ampliada">
+</div>
+
+<div class="overlay" id="emailSettingsOverlay">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <h2>Definições de email</h2>
+      <button class="close-x" onclick="closeEmailSettingsModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--ink-soft);line-height:1.55;margin-top:0;">
+        Usadas para preencher o pedido de orçamento ao laboratório (botão "✉ Pedir orçamento" em cada
+        pedido). Pode sempre rever e alterar o email antes de o enviar.
+      </p>
+      <label>Endereço da Web App de envio (Google Apps Script, opcional)</label>
+      <input type="text" id="sheetsUrl" placeholder="https://script.google.com/macros/s/AKfycb.../exec" style="margin-bottom:6px;">
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:0 0 16px;line-height:1.5;">
+        Sem esta ligação, o email é preparado mas terá de ser enviado manualmente a partir do seu programa de email habitual.
+      </p>
+
+      <div class="section-title first">Fornecedores / laboratórios</div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 12px;line-height:1.5;">
+        Pode ter vários fornecedores configurados. O marcado como "padrão" é o email pré-preenchido ao
+        pedir orçamento — pode sempre escolher outro no momento do envio.
+      </p>
+      <div id="fornecedoresGrid" style="display:flex;flex-direction:column;gap:10px;"></div>
+      <button class="btn-secondary" style="margin-top:10px;" onclick="addFornecedor()">+ Adicionar fornecedor</button>
+
+      <div class="section-title" style="padding-top:14px;border-top:1px solid var(--line);margin-top:18px;">Modelo do email</div>
+      <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 12px;line-height:1.5;">
+        Pode editar o texto do email de pedido de orçamento e escolher onde ficam os dados do pedido.
+      </p>
+      <button class="btn-secondary" onclick="closeEmailSettingsModal();openEmailTemplateModal();">✎ Editar modelo de email</button>
+    </div>
+    <div class="modal-foot">
+      <span></span>
+      <div class="foot-right">
+        <button class="btn-secondary" onclick="closeEmailSettingsModal()">Cancelar</button>
+        <button class="btn-primary" onclick="saveEmailSettings()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="emailTemplateOverlay">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <h2>Modelo de email — Pedido de orçamento</h2>
+      <button class="close-x" onclick="closeEmailTemplateModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.55;margin-top:0;">
+        Escreva o texto como quiser, e arraste (ou clique n)os campos abaixo para os colocar exatamente
+        onde quer que apareçam. Ficam ligados: qualquer pedido de orçamento enviado depois vai usar este
+        modelo, substituindo cada campo pelo valor real desse pedido — se o pedido não tiver esse dado,
+        o campo fica em branco.
+      </p>
+      <div id="tplCamposGrid" style="margin-bottom:14px;"></div>
+
+      <div id="tplEditArea">
+        <label>Assunto</label>
+        <input type="text" id="tplSubject" style="margin-bottom:10px;" onfocus="guardarFocoTemplate(this)" ondragover="event.preventDefault()">
+        <label>Texto do email</label>
+        <textarea id="tplBody" style="min-height:260px;font-family:'Inter',sans-serif;" onfocus="guardarFocoTemplate(this)" ondragover="event.preventDefault()"></textarea>
+      </div>
+
+      <div id="tplPreview" style="display:none;">
+        <div class="tpl-preview-box">
+          <div class="tpl-subject" id="tplPreviewSubject"></div>
+          <div class="tpl-body" id="tplPreviewBody"></div>
+        </div>
+        <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0;">Pré-visualização com dados de exemplo — os pedidos reais usam os seus próprios dados.</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-secondary" onclick="reporEmailTemplatePadrao()">↺ Repor original</button>
+      <div class="foot-right">
+        <button class="btn-secondary" id="tplPreviewBtn" onclick="previewEmailTemplate()">👁 Pré-visualizar</button>
+        <button class="btn-secondary" id="tplVoltarBtn" style="display:none;" onclick="voltarAEditarTemplate()">✎ Voltar a editar</button>
+        <button class="btn-primary" onclick="saveEmailTemplate()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="emailPreviewOverlay">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <h2>Pedido de orçamento por email</h2>
+      <button class="close-x" onclick="closeEmailPreview()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.5;margin-top:0;">
+        Reveja ou altere o email antes de o enviar ao laboratório.
+      </p>
+      <label>Fornecedor</label>
+      <select id="ep_fornecedor" style="margin-bottom:10px;" onchange="aplicarFornecedorEscolhido()"></select>
+      <label>Para</label>
+      <input type="email" id="ep_to" style="margin-bottom:10px;">
+      <label>CC</label>
+      <input type="email" id="ep_cc" style="margin-bottom:10px;">
+      <label>Assunto</label>
+      <input type="text" id="ep_subject" style="margin-bottom:10px;">
+      <label>Mensagem</label>
+      <textarea id="ep_body" style="min-height:220px;font-family:'Inter',sans-serif;"></textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="danger-link" onclick="closeEmailPreview()">Não enviar</button>
+      <div class="foot-right">
+        <button class="btn-primary" onclick="confirmSendEmail()">Enviar email</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/module-chrome.js"></script>
+<script type="module">
+import { makeDataStore, aoExpirarSessao } from "../src/db.js";
+import { getToken, limparSessao, getPerfil } from "../src/authClient.js";
+import { STATUS_MANIPULADOS, tarefaTransicaoEstado } from "../src/manipuladosCore.js";
+
+/* Reutiliza o cliente de dados da Central só para os anexos (getAsset/setAsset/
+   deleteAsset), que já tratam da fragmentação de ficheiros grandes e da
+   autenticação — ver src/db.js. O estado "estado.manipulados" é lido/escrito
+   diretamente aqui, porque é uma fatia própria deste módulo dentro do mesmo
+   /api/data partilhado por toda a Central (ver netlify/functions/data.js). */
+const dataStore = makeDataStore();
+
+function voltarACentral(){
+  window.top.location.href = "/";
+}
+window.voltarACentral = voltarACentral;
+
+aoExpirarSessao(() => {
+  limparSessao();
+  voltarACentral();
+});
+
+/* Cache do estado partilhado só para efeitos de identidade visual (nome e
+   logótipo da farmácia) — atualizada sempre que fetchEstado() é chamado.
+   Fonte única de verdade: `config.nomeFarmacia`/`config.logo`, definidos
+   pela farmácia em Configurações da Central e guardados no estado
+   partilhado — nunca o nome captado no registo (pode ficar desatualizado
+   se a farmácia o mudar mais tarde). */
+let ESTADO_BRANDING_CACHE = null;
+/* Logótipo movido para o seu próprio blob (/api/asset/branding-logo) — ver
+   carregarLogoAsset() abaixo e a nota em gravarManipulados(). */
+let ASSET_LOGO_CACHE = null;
+
+function nomeFarmaciaAtual(){
+  return ESTADO_BRANDING_CACHE?.config?.nomeFarmacia || getPerfil()?.nomeFarmacia || 'Farmácia';
+}
+
+function logoFarmaciaAtual(){
+  return ASSET_LOGO_CACHE || ESTADO_BRANDING_CACHE?.config?.logo || null;
+}
+
+async function carregarLogoAsset(){
+  const cached = window.ModuleChrome.getCachedBranding();
+  if(cached && cached.logo){ ASSET_LOGO_CACHE = cached.logo; aplicarBrandingFarmacia(); }
+  const token = getToken();
+  if(!token) return;
+  const logo = await window.ModuleChrome.fetchLogoAsset(token);
+  if(logo){ ASSET_LOGO_CACHE = logo; aplicarBrandingFarmacia(); }
+  window.ModuleChrome.cacheBranding(nomeFarmaciaAtual(), logoFarmaciaAtual());
+}
+
+function aplicarBrandingFarmacia(){
+  const tag = document.getElementById('brandTagFarmacia');
+  if(tag) tag.textContent = nomeFarmaciaAtual();
+  const logo = logoFarmaciaAtual();
+  const img = document.getElementById('brandLogoImg');
+  const emoji = document.getElementById('brandMarkEmoji');
+  if(logo && img){
+    img.src = logo;
+    img.style.display = 'block';
+    if(emoji) emoji.style.display = 'none';
+  }
+}
+
+async function fetchEstado(){
+  const token = getToken();
+  if(!token){ voltarACentral(); throw new Error('sem sessão'); }
+  const res = await fetch('/api/data', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+  if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+  const dados = await res.json();
+  ESTADO_BRANDING_CACHE = dados;
+  aplicarBrandingFarmacia();
+  return dados;
+}
+
+aplicarBrandingFarmacia();
+carregarLogoAsset();
+
+/* BUG DE CORRIDA (corrigido nesta sessão, hardening preventivo):
+   gravarManipulados() faz um read-modify-write clássico (lê /api/data,
+   junta a lista de pedidos nova, grava /api/data inteiro outra vez). A
+   lista `pedidos` em si não se perde entre duas gravações rápidas do MESMO
+   separador (é sempre a mesma referência partilhada, já com todas as
+   edições síncronas aplicadas antes de qualquer PUT arrancar) — mas o
+   resto do estado devolvido por fetchEstado() (`config`, e as fatias de
+   outros módulos dentro do mesmo /api/data) É uma cópia captada no
+   momento da leitura. Sem serialização, duas gravações deste módulo
+   disparadas em sucessão rápida podiam terminar fora de ordem (a mais
+   lenta a responder por último) e o PUT mais lento reverter, nessa
+   janela, uma alteração entretanto feita a essa parte partilhada do
+   estado. Mesmo padrão (e mesma correção) já aplicado em pim.html/
+   gabinete.html com uma fila `gravarQueue`/`enqueueSync`: cada gravação só
+   começa (e por isso só lê o estado do servidor) depois do PUT da
+   anterior já ter respondido. */
+let gravarQueue = Promise.resolve();
+function enqueueSync(task){
+  const run = gravarQueue.then(task, task);
+  gravarQueue = run.then(()=>{}, ()=>{}); // a fila continua mesmo que esta tarefa falhe
+  return run;
+}
+async function gravarManipulados(novaLista){
+  const estadoAtual = await fetchEstado();
+  const token = getToken();
+  // Logótipo omitido de propósito (ver carregarLogoAsset acima).
+  const configSemLogo = { ...(estadoAtual.config || {}) };
+  delete configSemLogo.logo;
+  const res = await fetch('/api/data', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...estadoAtual, config: configSemLogo, manipulados: novaLista })
+  });
+  if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+}
+
+if(!getToken()) voltarACentral();
+
+/* ---------------- DATA ---------------- */
+// ponto 30: STATUS vem agora de src/manipuladosCore.js (única fonte de
+// verdade, partilhada com a FARMA — ver src/farmaAcoes.js) em vez de uma
+// cópia local; mantém-se o nome curto "STATUS" para não mexer no resto do
+// ficheiro, que o usa em dezenas de sítios.
+const STATUS = STATUS_MANIPULADOS;
+const HIDDEN_FROM_ALL = ['entregue','cancelado'];
+const LOCAL_CACHE_KEY = 'central_manipulados_cache_v1'; // só para pintura instantânea / uso offline
+const SIDEBAR_KEY = 'famam_manipulados_sidebar_collapsed';
+let pedidos = [];
+let activeFilter = 'todos';
+let editingId = null;
+let sortMode = 'recentes'; // recentes | antigos | nome
+
+function migrateData(){
+  pedidos.forEach(p=>{
+    if(p.status === 'pendente'){ p.status = 'pendente_utente'; }
+    if(!STATUS[p.status]){ p.status = 'pendente_utente'; }
+    if(!p.anexos){ p.anexos = p.anexo ? [{name:p.anexo, type:'', data:''}] : []; }
+    if(!p.canal){ p.canal = 'Balcão'; }
+    if(p.operador === undefined){ p.operador = ''; }
+    if(p.medicamento === undefined){ p.medicamento = ''; }
+    if(p.sifarma === undefined){ p.sifarma = ''; }
+    if(p.tipoPrescricao === undefined){ p.tipoPrescricao = 'Uso Humano'; }
+    if(p.animal === undefined){ p.animal = ''; }
+  });
+}
+
+/* Pinta de imediato a partir da cache local (se existir — abre instantâneo e
+   funciona offline) e depois confirma sempre no servidor partilhado da
+   Central, substituindo pelo que lá estiver ("o servidor manda", a mesma
+   política já usada no resto da Central). */
+async function carregarPedidos(){
+  try{
+    const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+    if(raw) pedidos = JSON.parse(raw);
+  }catch(e){ /* ignora — segue sem cache local */ }
+  migrateData();
+  render();
+
+  setSyncStatus('loading');
+  try{
+    const estado = await fetchEstado();
+    pedidos = Array.isArray(estado.manipulados) ? estado.manipulados : [];
+    migrateData();
+    try{ localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(pedidos)); }catch(e){}
+    setSyncStatus('ok');
+    render();
+  }catch(e){
+    setSyncStatus('fail');
+  }
+}
+
+/* Grava no mesmo /api/data que o resto da Central usa — o servidor faz o
+   merge e preserva serviços/categorias/configurações desta farmácia (ver
+   netlify/functions/data.js). */
+async function persistirPedidos(){
+  try{
+    await enqueueSync(()=> gravarManipulados(pedidos));
+    try{ localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(pedidos)); }catch(e){}
+    setSyncStatus('ok');
+  }catch(e){
+    setSyncStatus('fail');
+    showToast('Não foi possível guardar agora. As alterações continuam neste computador — tente "Atualizar".');
+  }
+}
+
+function setSyncStatus(state){
+  const dot = document.getElementById('netlifySyncDot');
+  const label = document.getElementById('netlifySyncLabel');
+  if(!dot || !label) return;
+  if(state === 'loading'){ dot.style.background = '#E8B23D'; label.textContent = 'A sincronizar…'; }
+  else if(state === 'ok'){ dot.style.background = 'var(--green-bright)'; label.textContent = 'Sincronizado'; }
+  else { dot.style.background = 'var(--red)'; label.textContent = 'Falha — a usar cópia local'; }
+}
+function manualResync(){
+  carregarPedidos().then(()=> showToast('Dados atualizados.'));
+}
+function uid(){ return 'p_' + Math.random().toString(36).slice(2,10); }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+
+/* ---------------- RENDER: CABEÇALHO + BARRA DE FILTROS (inferior) ---------------- */
+function renderSidebar(){
+  const total = pedidos.length;
+  const late = pedidos.filter(isLate).length;
+  document.getElementById('statGrid').innerHTML = `
+    <div class="stat"><b>${total}</b><span>Total</span></div>
+    <div class="stat warn"><b>${late}</b><span>Atrasados</span></div>
+  `;
+
+  const counts = {todos: pedidos.filter(p=>!HIDDEN_FROM_ALL.includes(p.status)).length};
+  Object.keys(STATUS).forEach(k=> counts[k] = pedidos.filter(p=>p.status===k).length);
+
+  const items = [
+    {key:'todos', label:'Pedidos ativos', dot:'#8FC3A0'},
+    ...Object.entries(STATUS).map(([k,v])=>({key:k,label:v.label,dot:dotColor(k)}))
+  ];
+  const bbItems = items.map(it => ({
+    id: it.key,
+    icon: `<span style="width:8px;height:8px;border-radius:50%;background:${it.dot};display:inline-block;"></span>`,
+    label: `${it.label}${counts[it.key] ? ' (' + counts[it.key] + ')' : ''}`,
+    onSelect: () => setFilter(it.key)
+  }));
+  window.ModuleChrome.mountBottomBar(bbItems, { activeId: activeFilter });
+}
+function dotColor(k){
+  return {pendente_utente:'#C97F1E',pendente_farmacia:'#8034A8',preparacao:'#2E6FA3',pronto:'#4f9c72',entregue:'#9AA69E',cancelado:'#C0433B'}[k];
+}
+function setFilter(k){ activeFilter = k; render(); }
+
+/* ---------------- RENDER: TABLE ---------------- */
+function isLate(p){
+  if(p.status==='entregue' || p.status==='cancelado') return false;
+  const created = new Date(p.criado);
+  const diffDays = (Date.now() - created.getTime())/86400000;
+  return diffDays > 5;
+}
+function daysAgo(p){
+  const created = new Date(p.criado);
+  const diffDays = Math.floor((Date.now() - created.getTime())/86400000);
+  return diffDays;
+}
+function formatDate(iso){
+  if(!iso) return '—';
+  const d = new Date(iso + 'T00:00:00');
+  if(isNaN(d)) return iso;
+  return d.toLocaleDateString('pt-PT', {day:'2-digit', month:'2-digit', year:'numeric'});
+}
+function canalIcon(canal){
+  return {Email:'📧', Telefone:'📞', Balcão:'🏬', WhatsApp:'💬'}[canal] || '🏬';
+}
+
+function getFiltered(){
+  let list = pedidos.slice();
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+
+  if(q){
+    // a pesquisa é sempre global: ignora a aba de estado atualmente selecionada,
+    // para que um pedido "entregue" ou "cancelado" continue a ser encontrável
+    list = list.filter(p => [p.nome,p.nif,p.receita,p.telefone,p.email,p.medicamento,p.sifarma].join(' ').toLowerCase().includes(q));
+  }else{
+    if(activeFilter !== 'todos'){
+      list = list.filter(p=>p.status===activeFilter);
+    }else{
+      // Na vista "Todos" sem pesquisa, Entregue e Cancelado ficam apenas nas suas próprias abas
+      list = list.filter(p=>!HIDDEN_FROM_ALL.includes(p.status));
+    }
+  }
+
+  if(sortMode==='recentes') list.sort((a,b)=> new Date(b.criado)-new Date(a.criado));
+  if(sortMode==='antigos') list.sort((a,b)=> new Date(a.criado)-new Date(b.criado));
+  if(sortMode==='nome') list.sort((a,b)=> a.nome.localeCompare(b.nome));
+  return list;
+}
+
+function cycleSort(){
+  sortMode = sortMode==='recentes' ? 'antigos' : sortMode==='antigos' ? 'nome' : 'recentes';
+  const labels = {recentes:'Mais recentes', antigos:'Mais antigos', nome:'Nome (A–Z)'};
+  document.getElementById('sortLabel').textContent = labels[sortMode];
+  render();
+}
+
+function render(){
+  renderSidebar();
+  const list = getFiltered();
+  const wrap = document.getElementById('tableWrap');
+  if(list.length===0){
+    wrap.innerHTML = `<div class="empty"><b>Sem pedidos aqui</b>Ajuste os filtros ou crie um novo pedido de manipulado.</div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <div class="table-card">
+    <table>
+      <thead><tr>
+        <th style="width:30px">#</th>
+        <th>Cliente</th>
+        <th>Medicamento</th>
+        <th>NIF</th>
+        <th>Nº receita</th>
+        <th>Estado</th>
+        <th>Criado em</th>
+        <th>Aberto há</th>
+      </tr></thead>
+      <tbody>
+        ${list.map((p,i)=>`
+          <tr onclick="openModal('${p.id}')">
+            <td class="mono">${i+1}</td>
+            <td class="cell-name"><b>${canalIcon(p.canal)} ${escapeHtml(p.nome)}${p.tipoPrescricao==='Uso Veterinário' && p.animal ? ` 🐾 ${escapeHtml(p.animal)}`:''}</b><span>${escapeHtml(p.telefone||'—')}${p.operador?` · Op: ${escapeHtml(p.operador)}`:''}</span></td>
+            <td class="cell-name"><b>${escapeHtml(p.medicamento||'—')}</b>${p.sifarma?`<span>Sifarma: ${escapeHtml(p.sifarma)}</span>`:''}</td>
+            <td class="mono">${escapeHtml(p.nif||'—')}</td>
+            <td class="mono">${escapeHtml(p.receita||'—')}${p.anexos&&p.anexos.length?` <span class="attach-badge">📎${p.anexos.length}</span>`:''}</td>
+            <td><span class="badge ${(STATUS[p.status]||STATUS.pendente_utente).class}"><span class="dot"></span>${(STATUS[p.status]||STATUS.pendente_utente).label}</span></td>
+            <td class="mono">${formatDate(p.criado)}</td>
+            <td><span class="days-tag ${isLate(p)?'late':''}">${daysAgo(p)} dia${daysAgo(p)===1?'':'s'}${isLate(p)?' ⚠':''}</span></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    </div>
+  `;
+}
+function escapeHtml(s){
+  return String(s??'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/* ---------------- MODAL ---------------- */
+function buildStatusPicker(selected){
+  document.getElementById('statusPicker').innerHTML = Object.entries(STATUS).map(([k,v])=>`
+    <button type="button" data-s="${k}" class="${selected===k?'sel':''}" onclick="pickStatus('${k}')">${v.label}</button>
+  `).join('');
+}
+function pickStatus(k){
+  currentStatus = k;
+  buildStatusPicker(k);
+}
+let currentStatus = 'pendente_utente';
+
+function handleTipoPrescricaoChange(){
+  const tipo = document.getElementById('f_tipo_prescricao').value;
+  const label = document.getElementById('f_nome_label');
+  const animalWrap = document.getElementById('f_animal_wrap');
+  if(tipo === 'Uso Veterinário'){
+    label.textContent = 'Nome do dono do animal de companhia *';
+    animalWrap.style.display = 'block';
+  }else{
+    label.textContent = 'Nome do utente *';
+    animalWrap.style.display = 'none';
+    document.getElementById('f_animal').value = '';
+    document.getElementById('f_animal').classList.remove('field-error');
+  }
+}
+function handleCanalChange(){
+  const sel = document.getElementById('f_canal');
+  if(sel.value === 'Email'){
+    let email = '';
+    while(!email){
+      email = prompt('Qual o email do utente?');
+      if(email === null) break; // utilizador cancelou
+      email = (email || '').trim();
+      if(!email) showToast('O email é obrigatório quando o canal é Email.');
+    }
+    if(email){
+      const f = document.getElementById('f_email');
+      f.value = email;
+      f.classList.remove('field-error');
+    }
+  }
+}
+document.addEventListener('input', (e)=>{
+  if(e.target && e.target.classList && e.target.classList.contains('field-error')){
+    e.target.classList.remove('field-error');
+  }
+});
+let currentAttachments = [];
+
+function fileIcon(type){
+  if(type.startsWith('image/')) return null; // usa thumb real
+  if(type === 'application/pdf') return '📄';
+  return '📎';
+}
+function handleAttach(evt){
+  const files = Array.from(evt.target.files);
+  files.forEach(file=>{
+    if(file.size > 10*1024*1024){
+      showToast(`"${file.name}" excede 10 MB e não foi carregado.`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      currentAttachments.push({name:file.name, type:file.type, data:e.target.result});
+      renderAttachList();
+    };
+    reader.readAsDataURL(file);
+  });
+  evt.target.value = '';
+}
+function renderAttachList(){
+  const wrap = document.getElementById('attachList');
+  wrap.innerHTML = currentAttachments.map((a,idx)=>{
+    const isImg = a.type.startsWith('image/');
+    const hasData = !!a.data;
+    const thumbInner = hasData
+      ? (isImg ? `<img src="${a.data}">` : (fileIcon(a.type)||'📎'))
+      : (isImg ? '⏳' : (fileIcon(a.type)||'📎'));
+    return `
+    <div class="attach-item">
+      <div class="thumb" onclick="openAttachmentPreview(${idx})" title="Ver / abrir">${thumbInner}</div>
+      <span class="aname" onclick="openAttachmentPreview(${idx})" style="cursor:pointer;" title="Ver ${escapeHtml(a.name)}">${escapeHtml(a.name)}</span>
+      <button type="button" class="aremove" onclick="removeAttach(${idx})" title="Remover">✕</button>
+    </div>
+  `;}).join('');
+}
+async function resolveAttachmentData(idx){
+  const a = currentAttachments[idx];
+  if(!a) return null;
+  if(a.data) return a.data;
+  if(!a.remoteId) return null;
+  try{
+    const data = await dataStore.getAsset(a.remoteId);
+    a.data = data;
+    return a.data;
+  }catch(e){
+    showToast('Não foi possível carregar este ficheiro.');
+    return null;
+  }
+}
+async function openAttachmentPreview(idx){
+  const a = currentAttachments[idx];
+  if(!a) return;
+  const isImg = a.type.startsWith('image/');
+  showToast('A carregar ficheiro…');
+  const data = await resolveAttachmentData(idx);
+  if(!data) return;
+  if(isImg){
+    openLightbox(data);
+  }else{
+    const link = document.createElement('a');
+    link.href = data;
+    link.download = a.name;
+    link.click();
+  }
+  renderAttachList();
+}
+function openLightbox(dataUrl){
+  document.getElementById('lightboxImg').src = dataUrl;
+  document.getElementById('lightboxOverlay').classList.add('open');
+}
+function closeLightbox(){
+  document.getElementById('lightboxOverlay').classList.remove('open');
+  document.getElementById('lightboxImg').src = '';
+}
+function removeAttach(idx){
+  currentAttachments.splice(idx,1);
+  renderAttachList();
+}
+async function uploadAttachmentsToStore(list){
+  const results = [];
+  for(const a of list){
+    if(a.remoteId){ results.push({remoteId:a.remoteId, name:a.name, type:a.type}); continue; }
+    try{
+      const key = 'manipulado-anexo:' + uid();
+      await dataStore.setAsset(key, a.data);
+      results.push({remoteId:key, name:a.name, type:a.type});
+    }catch(e){
+      showToast(`Não foi possível guardar "${a.name}" no armazenamento partilhado — ficou só neste computador.`);
+      results.push({name:a.name, type:a.type, data:a.data});
+    }
+  }
+  return results;
+}
+
+function openModal(id){
+  editingId = id || null;
+  const p = id ? pedidos.find(x=>x.id===id) : null;
+  document.getElementById('modalTitle').textContent = p ? 'Editar pedido' : 'Novo pedido';
+  document.getElementById('modalCreatedAt').textContent = p ? ('Criado em ' + formatDate(p.criado)) : '';
+  document.getElementById('deleteBtn').style.display = p ? 'block' : 'none';
+  document.getElementById('requestBudgetBtn').style.display = p ? 'inline-flex' : 'none';
+  currentStatus = p ? p.status : 'pendente_farmacia';
+  buildStatusPicker(currentStatus);
+
+  document.getElementById('f_tipo_prescricao').value = p?.tipoPrescricao || 'Uso Humano';
+  document.getElementById('f_nome').value = p?.nome || '';
+  document.getElementById('f_animal').value = p?.animal || '';
+  handleTipoPrescricaoChange();
+  document.getElementById('f_telefone').value = p?.telefone || '';
+  document.getElementById('f_email').value = p?.email || '';
+  document.getElementById('f_nif').value = p?.nif || '';
+  document.getElementById('f_receita').value = p?.receita || '';
+  document.getElementById('f_acesso').value = p?.acesso || '';
+  document.getElementById('f_opcao').value = p?.opcao || '';
+  document.getElementById('f_data').value = p?.data || '';
+  document.getElementById('f_canal').value = p?.canal || 'Email';
+  document.getElementById('f_operador').value = p?.operador || '';
+  document.getElementById('f_medicamento').value = p?.medicamento || '';
+  document.getElementById('f_sifarma').value = p?.sifarma || '';
+  document.getElementById('f_comentarios').value = p?.comentarios || '';
+  currentAttachments = p?.anexos ? JSON.parse(JSON.stringify(p.anexos)) : [];
+  renderAttachList();
+
+  document.getElementById('overlay').classList.add('open');
+}
+function closeModal(){
+  document.getElementById('overlay').classList.remove('open');
+  editingId = null;
+}
+async function saveCurrent(){
+  const nome = document.getElementById('f_nome').value.trim();
+  const telefone = document.getElementById('f_telefone').value.trim();
+  const nif = document.getElementById('f_nif').value.trim();
+  const receita = document.getElementById('f_receita').value.trim();
+  const operador = document.getElementById('f_operador').value.trim();
+  const medicamento = document.getElementById('f_medicamento').value.trim();
+  const canalVal = document.getElementById('f_canal').value;
+  const emailVal = document.getElementById('f_email').value.trim();
+  const tipoPrescricao = document.getElementById('f_tipo_prescricao').value;
+  const animal = document.getElementById('f_animal').value.trim();
+
+  const requiredFields = [
+    ['f_tipo_prescricao', tipoPrescricao], ['f_nome', nome], ['f_telefone', telefone], ['f_nif', nif],
+    ['f_receita', receita], ['f_operador', operador], ['f_medicamento', medicamento],
+  ];
+  if(canalVal === 'Email'){
+    requiredFields.push(['f_email', emailVal]);
+  }
+  if(tipoPrescricao === 'Uso Veterinário'){
+    requiredFields.push(['f_animal', animal]);
+  }
+  let firstInvalid = null;
+  requiredFields.forEach(([id, val])=>{
+    const el = document.getElementById(id);
+    if(!val){
+      el.classList.add('field-error');
+      if(!firstInvalid) firstInvalid = el;
+    }else{
+      el.classList.remove('field-error');
+    }
+  });
+  if(firstInvalid){
+    showToast('Preencha os campos assinalados a vermelho.');
+    firstInvalid.focus();
+    return;
+  }
+
+  const saveBtn = document.querySelector('#overlay .btn-primary');
+  if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'A guardar…'; }
+
+  const uploadedAnexos = await uploadAttachmentsToStore(currentAttachments);
+
+  const payload = {
+    nome, telefone, nif, receita, operador, medicamento,
+    tipoPrescricao, animal: tipoPrescricao === 'Uso Veterinário' ? animal : '',
+    sifarma: document.getElementById('f_sifarma').value.trim(),
+    canal: document.getElementById('f_canal').value,
+    email: document.getElementById('f_email').value.trim(),
+    acesso: document.getElementById('f_acesso').value.trim(),
+    opcao: document.getElementById('f_opcao').value.trim(),
+    data: document.getElementById('f_data').value,
+    anexos: uploadedAnexos,
+    comentarios: document.getElementById('f_comentarios').value.trim(),
+    status: currentStatus,
+  };
+  let isNew = false;
+  let statusAnterior = null;
+  if(editingId){
+    const idx = pedidos.findIndex(x=>x.id===editingId);
+    statusAnterior = pedidos[idx].status;
+    pedidos[idx] = {...pedidos[idx], ...payload};
+  }else{
+    isNew = true;
+    pedidos.unshift({id:uid(), criado: todayISO(), ...payload});
+  }
+  if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
+  closeModal();
+  render();
+  await persistirPedidos();
+  if(window.ModuleChrome){
+    if(isNew) window.ModuleChrome.registarUso('manipulados', 'criar_pedido');
+    // Pedido do utilizador: "podemos pôr a análise para toda a vez que se
+    // muda de estado" — antes só se contava a chegada a 'entregue'; agora
+    // conta-se qualquer mudança de estado (inclui reabrir um pedido já
+    // fechado), para uma recolha de dados de utilização mais completa.
+    if(!isNew && payload.status !== statusAnterior){
+      // ponto 30: a decisão da tarefa a registar (incl. "reabrir_pedido" ao
+      // sair de entregue/cancelado) vem agora de tarefaTransicaoEstado()
+      // (src/manipuladosCore.js) — mesma regra, agora partilhada com a FARMA
+      // em vez de duplicada aqui.
+      const tarefaTransicao = tarefaTransicaoEstado(statusAnterior, payload.status);
+      if(tarefaTransicao) window.ModuleChrome.registarUso('manipulados', tarefaTransicao);
+    }
+  }
+  showToast(isNew ? 'Novo pedido criado.' : 'Pedido atualizado.');
+}
+async function deleteCurrent(){
+  if(!editingId) return;
+  if(!confirm('Eliminar este pedido? Esta ação não pode ser desfeita.')) return;
+  const alvo = pedidos.find(x=>x.id===editingId);
+  pedidos = pedidos.filter(x=>x.id!==editingId);
+  closeModal();
+  render();
+  await persistirPedidos();
+  (alvo?.anexos||[]).forEach(a=>{ if(a.remoteId) dataStore.deleteAsset(a.remoteId).catch(()=>{}); });
+  showToast('Pedido eliminado.');
+}
+
+/* ---------------- TOAST ---------------- */
+let toastTimer;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+
+/* ---------------- CSV IMPORT / EXPORT ---------------- */
+function exportCSV(){
+  const headers = ['Tipo de Prescrição','Nome','Nome do Animal','Telefone','Email','NIF','Medicamento','Nº reserva Sifarma','Nº receita','Código acesso','Código opção','Data prevista','Ficheiros anexados','Comentários','Estado','Canal de receção','Operador','Data criação'];
+  const rows = pedidos.map(p=>[p.tipoPrescricao||'Uso Humano',p.nome,p.animal||'',p.telefone,p.email,p.nif,p.medicamento,p.sifarma,p.receita,p.acesso,p.opcao,p.data,(p.anexos||[]).map(a=>a.name).join(', '),p.comentarios,(STATUS[p.status]||STATUS.pendente_utente).label,p.canal||'',p.operador||'',p.criado]);
+  const csv = [headers, ...rows].map(r=>r.map(csvCell).join(';')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'pedidos_manipulados_' + todayISO() + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('CSV exportado.');
+}
+function csvCell(v){
+  const s = String(v??'');
+  return /[;"\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+}
+
+function handleImport(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e)=>{
+    try{
+      const text = e.target.result;
+      const lines = text.split(/\r?\n/).filter(l=>l.trim().length);
+      const delim = lines[0].includes(';') ? ';' : ',';
+      const header = splitCSVLine(lines[0], delim).map(h=>h.trim().toLowerCase());
+      let added = 0;
+      for(let i=1;i<lines.length;i++){
+        const cols = splitCSVLine(lines[i], delim);
+        const get = (name)=>{
+          const idx = header.findIndex(h=>h.includes(name));
+          return idx>=0 ? (cols[idx]||'').trim() : '';
+        };
+        const nome = get('nome');
+        if(!nome) continue;
+        pedidos.unshift({
+          id:uid(),
+          nome,
+          telefone: get('telefone') || get('phone'),
+          email: get('email'),
+          nif: get('contribuinte') || get('nif'),
+          medicamento: get('medicamento'),
+          sifarma: get('sifarma'),
+          receita: get('receita'),
+          acesso: get('acesso') || get('dispensa'),
+          opcao: get('opção') || get('opcao'),
+          data: '',
+          anexos: [],
+          comentarios: get('coment'),
+          status: 'pendente_utente',
+          canal: get('canal') || 'Balcão',
+          operador: get('operador'),
+          criado: todayISO(),
+        });
+        added++;
+      }
+      await persistirPedidos();
+      render();
+      showToast(added + ' pedido(s) importado(s).');
+    }catch(err){
+      showToast('Não foi possível ler o ficheiro CSV.');
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+  evt.target.value = '';
+}
+function splitCSVLine(line, delim){
+  const out = []; let cur=''; let inQ=false;
+  for(let i=0;i<line.length;i++){
+    const c = line[i];
+    if(c === '"'){
+      if(inQ && line[i+1]==='"'){ cur+='"'; i++; } else { inQ = !inQ; }
+    }else if(c === delim && !inQ){
+      out.push(cur); cur='';
+    }else{ cur += c; }
+  }
+  out.push(cur);
+  return out;
+}
+
+/* ---------------- INIT ---------------- */
+document.getElementById('overlay').addEventListener('click', (e)=>{
+  if(e.target.id==='overlay') closeModal();
+});
+document.getElementById('emailPreviewOverlay').addEventListener('click', (e)=>{
+  if(e.target.id==='emailPreviewOverlay') closeEmailPreview();
+});
+document.addEventListener('keydown', (e)=>{
+  if(e.key==='Escape'){ closeModal(); closeLightbox(); closeEmailPreview(); }
+});
+
+/* A antiga sidebar lateral colapsável foi substituída pela barra inferior
+   (assets/module-chrome.js) — mantidas só por compatibilidade, sem fazerem nada. */
+function initSidebar(){}
+function toggleSidebar(){}
+
+/* ---- definições de email (Fornecedores/laboratórios + Web App de envio) ----
+   Ponto 37: redesenhado ao estilo do AUE (modulos/aue.html), a pedido direto
+   do Ivo — antes só havia um único "email de destino" (`{dest}`) para toda a
+   farmácia; agora há uma lista de Fornecedores (nome/to/cc) editável —
+   adicionar/remover à vontade — com um marcado como "padrão" (pré-preenchido
+   ao pedir orçamento, mas sempre trocável no momento do envio), mais o
+   endereço opcional de uma Web App do Google Apps Script para envio
+   automático (o mesmo mecanismo já usado no AUE — a Central chama-lhe
+   informalmente "o Google Sheets" porque é ali que a Web App costuma estar
+   ligada). Mantém-se sempre o fallback para mailto: quando essa Web App não
+   está configurada. */
+const EMAIL_SETTINGS_KEY = 'famam_email_settings';
+
+function getEmailSettings(){
+  let s;
+  try{ s = JSON.parse(localStorage.getItem(EMAIL_SETTINGS_KEY)) || {}; }catch(e){ s = {}; }
+  if(!s.url) s.url = '';
+  if(!Array.isArray(s.fornecedores)){
+    // Migração do formato antigo (só {dest}) para a lista de Fornecedores.
+    s.fornecedores = s.dest ? [{id:uid(), nome:'Principal', to:s.dest, cc:'', padrao:true}] : [];
+  }
+  delete s.dest;
+  if(s.fornecedores.length && !s.fornecedores.some(f=>f.padrao)) s.fornecedores[0].padrao = true;
+  return s;
+}
+function fornecedorPadrao(settings){
+  return settings.fornecedores.find(f=>f.padrao) || settings.fornecedores[0] || null;
+}
+
+let tempFornecedores = [];
+function openEmailSettingsModal(){
+  const s = getEmailSettings();
+  document.getElementById('sheetsUrl').value = s.url || '';
+  tempFornecedores = s.fornecedores.map(f=>({...f}));
+  window.tempFornecedores = tempFornecedores; // os campos do modal usam handlers inline (oninput="tempFornecedores[i]...") que correm no escopo global, não no escopo deste <script type="module"> — mesmo motivo do window.draftStock em gabinete.html (ver ponto 34/36)
+  renderFornecedoresGrid();
+  document.getElementById('emailSettingsOverlay').classList.add('open');
+}
+function closeEmailSettingsModal(){ document.getElementById('emailSettingsOverlay').classList.remove('open'); }
+function renderFornecedoresGrid(){
+  const wrap = document.getElementById('fornecedoresGrid');
+  if(!tempFornecedores.length){
+    wrap.innerHTML = '<p style="font-size:12px;color:var(--ink-soft);margin:0;">Ainda não tem nenhum fornecedor configurado — use "+ Adicionar fornecedor" abaixo.</p>';
+    return;
+  }
+  wrap.innerHTML = tempFornecedores.map((f,i)=>`
+    <div class="fornecedor-row">
+      <div class="fornecedor-row-head">
+        <input type="text" placeholder="Nome do fornecedor/laboratório" value="${escapeHtml(f.nome||'')}" oninput="tempFornecedores[${i}].nome=this.value">
+        <label class="fornecedor-padrao"><input type="radio" name="fornecedorPadrao" ${f.padrao?'checked':''} onchange="setFornecedorPadrao(${i})"> padrão</label>
+        <button type="button" class="fornecedor-remover" title="Remover fornecedor" onclick="removeFornecedor(${i})">✕</button>
+      </div>
+      <div class="fornecedor-row-fields">
+        <input type="email" placeholder="email para pedidos" value="${escapeHtml(f.to||'')}" oninput="tempFornecedores[${i}].to=this.value">
+        <input type="email" placeholder="CC (opcional)" value="${escapeHtml(f.cc||'')}" oninput="tempFornecedores[${i}].cc=this.value">
+      </div>
+    </div>
+  `).join('');
+}
+function addFornecedor(){
+  tempFornecedores.push({id:uid(), nome:'', to:'', cc:'', padrao: tempFornecedores.length===0});
+  renderFornecedoresGrid();
+}
+function removeFornecedor(i){
+  const eraPadrao = tempFornecedores[i] && tempFornecedores[i].padrao;
+  tempFornecedores.splice(i,1);
+  if(eraPadrao && tempFornecedores.length) tempFornecedores[0].padrao = true;
+  renderFornecedoresGrid();
+}
+function setFornecedorPadrao(i){
+  tempFornecedores.forEach((f,idx)=>{ f.padrao = (idx===i); });
+}
+function saveEmailSettings(){
+  const url = document.getElementById('sheetsUrl').value.trim();
+  // Descarta linhas em branco (sem nome nem email) que tenham ficado por preencher.
+  const fornecedores = tempFornecedores.filter(f=>(f.nome&&f.nome.trim())||(f.to&&f.to.trim()));
+  if(fornecedores.length && !fornecedores.some(f=>f.padrao)) fornecedores[0].padrao = true;
+  localStorage.setItem(EMAIL_SETTINGS_KEY, JSON.stringify({url, fornecedores}));
+  closeEmailSettingsModal();
+  showToast('Definições de email guardadas.');
+}
+
+/* ---- pedido de orçamento, com Fornecedor escolhível no momento do envio ---- */
+let pendingEmailPedido = null;
+let previewFornecedores = [];
+
+/* ---- modelo de email personalizável (ponto 38) ----
+   Pedido direto do Ivo: poder editar o texto do email padrão e "arrastar os
+   campos" (nome, telefone, medicamento, etc.) para onde quiser dentro do
+   texto, ficando esses campos ligados — qualquer email futuro usa sempre o
+   mesmo modelo, substituindo os valores reais de cada pedido. Como o corpo
+   do email é sempre texto simples (enviado por mailto: ou pela Web App, ver
+   ponto 37 — nunca HTML), "arrastar um campo para uma posição" significa
+   literalmente arrastar (ou clicar) um destes marcadores {{campo}} para o
+   ponto exato do texto onde o cursor estiver — o próprio navegador trata da
+   inserção no sítio certo ao largar texto sobre uma <textarea>.
+   Nota de honestidade sobre o alcance: só o email de "Pedir orçamento" é
+   personalizável (o único "email padrão" que este módulo envia); não há
+   lógica condicional no modelo — um campo sem valor no pedido (ex.: Animal
+   fora de uma prescrição veterinária) fica simplesmente em branco no email,
+   nunca esconde a linha inteira. Quando não há modelo guardado, mantém-se
+   exatamente o texto antigo, tal e qual, incluindo as suas omissões
+   condicionais (linha "Animal" e comentários só aparecem quando aplicável)
+   — para nenhuma farmácia que nunca tocar no editor ver o email mudar. */
+const EMAIL_TEMPLATE_KEY = 'famam_email_template';
+const CAMPOS_TEMPLATE = [
+  {token:'nome', label:'Nome do utente/dono'},
+  {token:'animal', label:'Nome do animal'},
+  {token:'telefone', label:'Telefone/contacto'},
+  {token:'receita', label:'Nº de receita'},
+  {token:'acesso', label:'Código de acesso/dispensa'},
+  {token:'opcao', label:'Código de direito de opção'},
+  {token:'comentarios', label:'Comentários'},
+  {token:'medicamento', label:'Medicamento/manipulado'},
+  {token:'farmacia', label:'Nome da farmácia'},
+  {token:'operador', label:'Operador'},
+];
+const DEFAULT_TEMPLATE = {
+  subject: 'Pedido de orçamento — Manipulado: {{medicamento}}',
+  body: [
+    'Bom dia,', '',
+    'Vimos por este meio pedir orçamento para o manipulado "{{medicamento}}".', '',
+    'Dados do pedido:',
+    'Nome: {{nome}}',
+    'Animal: {{animal}}',
+    'Contacto: {{telefone}}',
+    'Nº de receita: {{receita}}',
+    'Código de acesso/dispensa: {{acesso}}',
+    'Código de direito de opção: {{opcao}}',
+    '',
+    '{{comentarios}}',
+    '',
+    'Com os melhores cumprimentos,',
+    '{{farmacia}}',
+  ].join('\n'),
+};
+function getEmailTemplate(){
+  try{
+    const t = JSON.parse(localStorage.getItem(EMAIL_TEMPLATE_KEY));
+    if(t && typeof t.subject === 'string' && typeof t.body === 'string') return t;
+  }catch(e){}
+  return null; // sem modelo guardado -> usa a lógica antiga tal e qual (ver buildEmailContent)
+}
+function dadosTemplate(p){
+  const isVet = p.tipoPrescricao === 'Uso Veterinário';
+  return {
+    nome: p.nome || '', animal: isVet ? (p.animal||'') : '', telefone: p.telefone || '',
+    receita: p.receita || '', acesso: p.acesso || '', opcao: p.opcao || '',
+    comentarios: (p.comentarios||'').trim(), medicamento: p.medicamento || '',
+    farmacia: nomeFarmaciaAtual(), operador: p.operador || '',
+  };
+}
+function aplicarTemplate(str, dados){
+  return String(str||'').replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (m, key) => (dados[key] !== undefined ? String(dados[key]) : ''));
+}
+
+function buildEmailContent(p){
+  const settings = getEmailSettings();
+  const f = fornecedorPadrao(settings);
+  const tpl = getEmailTemplate();
+  let subject, body;
+  if(tpl){
+    const dados = dadosTemplate(p);
+    subject = aplicarTemplate(tpl.subject, dados);
+    body = aplicarTemplate(tpl.body, dados);
+  } else {
+    // Sem modelo personalizado: comportamento original, preservado tal e qual.
+    subject = 'Pedido de orçamento — Manipulado: ' + (p.medicamento || '');
+    const isVet = p.tipoPrescricao === 'Uso Veterinário';
+    const bodyLines = [
+      'Bom dia,', '',
+      'Vimos por este meio pedir orçamento para o manipulado "' + (p.medicamento || '') + '".', '',
+      'Dados do pedido:',
+      isVet ? ('Dono do animal: ' + (p.nome || '—')) : ('Utente: ' + (p.nome || '—')),
+    ];
+    if(isVet){
+      bodyLines.push('Animal: ' + (p.animal || '—'));
+    }
+    bodyLines.push(
+      'Contacto: ' + (p.telefone || '—'),
+      'Nº de receita: ' + (p.receita || '—'),
+      'Código de acesso/dispensa: ' + (p.acesso || '—'),
+      'Código de direito de opção: ' + (p.opcao || '—'),
+    );
+    if(p.comentarios && p.comentarios.trim()){
+      bodyLines.push('', p.comentarios.trim());
+    }
+    const nomeFarmacia = nomeFarmaciaAtual();
+    bodyLines.push('', 'Com os melhores cumprimentos,', nomeFarmacia);
+    body = bodyLines.join('\n');
+  }
+  return { fornecedorId: f?f.id:'', to: f?(f.to||''):'', cc: f?(f.cc||''):'', subject, body };
+}
+
+/* ---- editor do modelo de email (arrastar campos + pré-visualização) ---- */
+const DADOS_EXEMPLO_TEMPLATE = {
+  nome:'Maria Silva', animal:'Rex', telefone:'912345678', receita:'1234567890123',
+  acesso:'AB12345', opcao:'XY98765', comentarios:'Preparar com sabor a morango, se possível.',
+  medicamento:'Minoxidil 5% solução', farmacia: '', operador:'Ana Costa',
+};
+function openEmailTemplateModal(){
+  const t = getEmailTemplate() || DEFAULT_TEMPLATE;
+  document.getElementById('tplSubject').value = t.subject;
+  document.getElementById('tplBody').value = t.body;
+  document.getElementById('tplCamposGrid').innerHTML = CAMPOS_TEMPLATE.map(c=>
+    `<span class="field-chip" draggable="true" ondragstart="event.dataTransfer.setData('text/plain','{{${c.token}}}')" onclick="inserirCampoTemplate('{{${c.token}}}')">${escapeHtml(c.label)}</span>`
+  ).join('');
+  document.getElementById('tplPreview').style.display = 'none';
+  document.getElementById('tplEditArea').style.display = '';
+  document.getElementById('tplPreviewBtn').style.display = '';
+  document.getElementById('tplVoltarBtn').style.display = 'none';
+  document.getElementById('emailTemplateOverlay').classList.add('open');
+}
+function closeEmailTemplateModal(){ document.getElementById('emailTemplateOverlay').classList.remove('open'); }
+let ultimoFocoTemplate = null;
+function guardarFocoTemplate(el){ ultimoFocoTemplate = el; }
+function inserirCampoTemplate(token){
+  const el = (ultimoFocoTemplate && document.body.contains(ultimoFocoTemplate)) ? ultimoFocoTemplate : document.getElementById('tplBody');
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  el.value = el.value.slice(0, start) + token + el.value.slice(end);
+  el.focus();
+  el.selectionStart = el.selectionEnd = start + token.length;
+}
+function previewEmailTemplate(){
+  const dados = {...DADOS_EXEMPLO_TEMPLATE, farmacia: nomeFarmaciaAtual()};
+  const subject = aplicarTemplate(document.getElementById('tplSubject').value, dados);
+  const body = aplicarTemplate(document.getElementById('tplBody').value, dados);
+  document.getElementById('tplPreviewSubject').textContent = subject;
+  document.getElementById('tplPreviewBody').textContent = body;
+  document.getElementById('tplEditArea').style.display = 'none';
+  document.getElementById('tplPreview').style.display = '';
+  document.getElementById('tplPreviewBtn').style.display = 'none';
+  document.getElementById('tplVoltarBtn').style.display = '';
+}
+function voltarAEditarTemplate(){
+  document.getElementById('tplPreview').style.display = 'none';
+  document.getElementById('tplEditArea').style.display = '';
+  document.getElementById('tplPreviewBtn').style.display = '';
+  document.getElementById('tplVoltarBtn').style.display = 'none';
+}
+function reporEmailTemplatePadrao(){
+  document.getElementById('tplSubject').value = DEFAULT_TEMPLATE.subject;
+  document.getElementById('tplBody').value = DEFAULT_TEMPLATE.body;
+  showToast('Modelo reposto para o texto original — clique em "Guardar" para confirmar.');
+}
+function saveEmailTemplate(){
+  const subject = document.getElementById('tplSubject').value;
+  const body = document.getElementById('tplBody').value;
+  if(!body.trim()){ showToast('O texto do email não pode ficar vazio.'); return; }
+  localStorage.setItem(EMAIL_TEMPLATE_KEY, JSON.stringify({subject, body}));
+  closeEmailTemplateModal();
+  showToast('Modelo de email guardado — passa a ser usado em todos os pedidos de orçamento.');
+}
+
+function sendBudgetEmail(p){
+  // Bug real e pré-existente corrigido no ponto 37 (encontrado durante os
+  // testes automáticos desta sessão, não reportado pelo Ivo): o botão "✉
+  // Pedir orçamento" chamava esta função com `pedidos.find(x=>x.id===editingId)`
+  // diretamente no atributo onclick inline — mas `pedidos`/`editingId` são
+  // variáveis deste módulo ES, nunca ficam acessíveis a partir de um
+  // atributo inline (que corre no escopo global), pelo que o clique falhava
+  // sempre com um ReferenceError silencioso e o email nunca chegava a abrir.
+  // Agora o botão chama sendBudgetEmail() sem argumentos, e a função resolve
+  // o pedido aqui dentro, no escopo correto.
+  p = p || pedidos.find(x=>x.id===editingId);
+  if(!p) return;
+  const content = buildEmailContent(p);
+  pendingEmailPedido = p;
+  const settings = getEmailSettings();
+  previewFornecedores = settings.fornecedores;
+  const sel = document.getElementById('ep_fornecedor');
+  if(previewFornecedores.length){
+    sel.innerHTML = previewFornecedores.map(f=>`<option value="${escapeHtml(f.id)}" ${f.id===content.fornecedorId?'selected':''}>${escapeHtml(f.nome||'(sem nome)')}${f.padrao?' — padrão':''}</option>`).join('');
+    sel.style.display = '';
+  } else {
+    sel.innerHTML = '<option value="">Nenhum fornecedor configurado — use "✉ Definições de email"</option>';
+  }
+  document.getElementById('ep_to').value = content.to;
+  document.getElementById('ep_cc').value = content.cc;
+  document.getElementById('ep_subject').value = content.subject;
+  document.getElementById('ep_body').value = content.body;
+  document.getElementById('emailPreviewOverlay').classList.add('open');
+}
+function aplicarFornecedorEscolhido(){
+  const id = document.getElementById('ep_fornecedor').value;
+  const f = previewFornecedores.find(x=>x.id===id);
+  if(!f) return;
+  document.getElementById('ep_to').value = f.to || '';
+  document.getElementById('ep_cc').value = f.cc || '';
+}
+function closeEmailPreview(){
+  document.getElementById('emailPreviewOverlay').classList.remove('open');
+  pendingEmailPedido = null;
+}
+function confirmSendEmail(){
+  const dest = document.getElementById('ep_to').value.trim();
+  const cc = document.getElementById('ep_cc').value.trim();
+  const subject = document.getElementById('ep_subject').value.trim();
+  const bodyText = document.getElementById('ep_body').value;
+  if(!dest){ showToast('Indique um email de destino.'); return; }
+  const settings = getEmailSettings();
+  const url = settings.url;
+
+  if(!url){
+    // Sem Web App configurada: abre o cliente de email do próprio
+    // utilizador, já preenchido — funciona para qualquer farmácia, sem
+    // precisar de nenhuma conta/serviço configurado à parte.
+    let mailto = `mailto:${encodeURIComponent(dest)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+    if(cc){ mailto += '&cc=' + encodeURIComponent(cc); }
+    window.open(mailto, '_blank');
+    if(window.ModuleChrome) window.ModuleChrome.registarUso('manipulados', 'enviar_orcamento');
+    closeEmailPreview();
+    return;
+  }
+
+  const sendBtn = document.querySelector('#emailPreviewOverlay .btn-primary');
+  if(sendBtn){ sendBtn.disabled = true; sendBtn.textContent = 'A enviar…'; }
+  fetch(url, {
+    method:'POST',
+    mode:'no-cors', // o Apps Script redireciona a resposta (script.googleusercontent.com); esse 2º
+                    // salto às vezes é bloqueado por CORS mesmo com o email já enviado — com 'no-cors'
+                    // não conseguimos ler a resposta, mas o pedido chega e o script corre na mesma
+                    // (mesmo mecanismo já usado em modulos/aue.html).
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({action:'sendEmail', to:dest, cc, subject, body:bodyText})
+  }).then(()=>{
+    showToast('Pedido de envio enviado para ' + dest + (cc?(' (CC: '+cc+')'):'') + '. Confirme na pasta "Enviados" da conta Google ligada à Web App.');
+    if(window.ModuleChrome) window.ModuleChrome.registarUso('manipulados', 'enviar_orcamento');
+  }).catch(()=>{
+    showToast('Não foi possível contactar a Web App (sem ligação à internet ou endereço incorreto). Verifique as Definições de email.');
+  }).finally(()=>{
+    if(sendBtn){ sendBtn.disabled = false; sendBtn.textContent = 'Enviar email'; }
+    closeEmailPreview();
+  });
+}
+
+carregarPedidos();
+render();
+initSidebar();
+
+/* Exposição global — necessária p/ handlers inline (onclick="...") em módulos ES,
+   já que declarações de topo de um módulo não ficam automaticamente em window. */
+window.addFornecedor = addFornecedor;
+window.aplicarFornecedorEscolhido = aplicarFornecedorEscolhido;
+window.closeEmailPreview = closeEmailPreview;
+window.closeEmailSettingsModal = closeEmailSettingsModal;
+window.closeEmailTemplateModal = closeEmailTemplateModal; // ponto 38: editor de template de email arrastável
+window.closeLightbox = closeLightbox;
+window.closeModal = closeModal;
+window.confirmSendEmail = confirmSendEmail;
+window.cycleSort = cycleSort;
+window.deleteCurrent = deleteCurrent;
+window.exportCSV = exportCSV;
+window.guardarFocoTemplate = guardarFocoTemplate; // ponto 38
+window.handleAttach = handleAttach;
+window.handleCanalChange = handleCanalChange;
+window.handleImport = handleImport;
+window.handleTipoPrescricaoChange = handleTipoPrescricaoChange;
+window.inserirCampoTemplate = inserirCampoTemplate; // ponto 38
+window.manualResync = manualResync;
+window.openAttachmentPreview = openAttachmentPreview;
+window.openEmailSettingsModal = openEmailSettingsModal;
+window.openEmailTemplateModal = openEmailTemplateModal; // ponto 38
+window.openModal = openModal;
+window.pickStatus = pickStatus;
+window.previewEmailTemplate = previewEmailTemplate; // ponto 38
+window.removeAttach = removeAttach;
+window.removeFornecedor = removeFornecedor;
+window.reporEmailTemplatePadrao = reporEmailTemplatePadrao; // ponto 38
+window.render = render;
+window.saveCurrent = saveCurrent;
+window.saveEmailSettings = saveEmailSettings;
+window.saveEmailTemplate = saveEmailTemplate; // ponto 38
+window.sendBudgetEmail = sendBudgetEmail;
+window.setFilter = setFilter;
+window.setFornecedorPadrao = setFornecedorPadrao;
+window.toggleSidebar = toggleSidebar;
+window.voltarAEditarTemplate = voltarAEditarTemplate; // ponto 38
+</script>
+</body>
+</html>
