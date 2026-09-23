@@ -12,7 +12,7 @@
  * seja exposta por engano pelas rotas de dados.
  */
 import { getStore } from "@netlify/blobs";
-import { hashPassword, verifyPassword, signToken, autenticarPedido, novoTenantId, normalizarEmail } from "./_lib/auth.js";
+import { hashPassword, verifyPassword, signToken, autenticarPedido, novoTenantId, normalizarEmail, ehSuperAdmin } from "./_lib/auth.js";
 
 const STORE_NAME = "central-saas-contas";
 
@@ -41,6 +41,9 @@ export async function handleRequest(request, context, getStoreImpl) {
   if (acao === "signup" && request.method === "POST") return signup(request, store);
   if (acao === "login" && request.method === "POST") return login(request, store);
   if (acao === "me" && request.method === "GET") return me(request, store);
+  // Ponto 54 — Painel Developer/Super-Admin: rota exclusiva para quem tem o
+  // email em SUPER_ADMIN_EMAILS (ver _lib/auth.js -> ehSuperAdmin()).
+  if (acao === "admin-farmacias" && request.method === "GET") return adminFarmacias(request, store);
 
   return jsonResponse({ error: "Rota ou método não suportado." }, 404);
 }
@@ -70,8 +73,9 @@ async function signup(request, store) {
     };
     await store.setJSON(`conta:${email}`, conta);
 
-    const token = signToken({ tenantId, email, nomeFarmacia });
-    return jsonResponse({ token, tenantId, email, nomeFarmacia });
+    const isSuperAdmin = ehSuperAdmin(email);
+    const token = signToken({ tenantId, email, nomeFarmacia, isSuperAdmin });
+    return jsonResponse({ token, tenantId, email, nomeFarmacia, isSuperAdmin });
   } catch (err) {
     if (String(err.message || "").includes("AUTH_JWT_SECRET")) jwtSecretOk = false;
     return jsonResponse({ error: jwtSecretOk ? "Falha ao criar a conta." : String(err.message), detail: String(err) }, 500);
@@ -91,8 +95,9 @@ async function login(request, store) {
     if (!conta || !verifyPassword(password, conta.passwordHash)) {
       return jsonResponse({ error: "Email ou palavra-passe incorretos." }, 401);
     }
-    const token = signToken({ tenantId: conta.tenantId, email: conta.email, nomeFarmacia: conta.nomeFarmacia });
-    return jsonResponse({ token, tenantId: conta.tenantId, email: conta.email, nomeFarmacia: conta.nomeFarmacia });
+    const isSuperAdmin = ehSuperAdmin(conta.email);
+    const token = signToken({ tenantId: conta.tenantId, email: conta.email, nomeFarmacia: conta.nomeFarmacia, isSuperAdmin });
+    return jsonResponse({ token, tenantId: conta.tenantId, email: conta.email, nomeFarmacia: conta.nomeFarmacia, isSuperAdmin });
   } catch (err) {
     return jsonResponse({ error: "Falha ao autenticar.", detail: String(err) }, 500);
   }
@@ -101,5 +106,39 @@ async function login(request, store) {
 async function me(request) {
   const payload = autenticarPedido(request);
   if (!payload) return jsonResponse({ error: "Sessão inválida ou expirada." }, 401);
-  return jsonResponse({ tenantId: payload.tenantId, email: payload.email, nomeFarmacia: payload.nomeFarmacia });
+  return jsonResponse({
+    tenantId: payload.tenantId, email: payload.email, nomeFarmacia: payload.nomeFarmacia,
+    isSuperAdmin: !!payload.isSuperAdmin
+  });
+}
+
+/**
+ * Ponto 54 — lista todas as farmácias (contas) registadas, para o Painel
+ * Developer/Super-Admin. Nunca devolve `passwordHash`. Confia SÓ na claim
+ * `isSuperAdmin` assinada dentro do próprio token (nunca em nada vindo do
+ * pedido) — um utilizador não pode fabricar acesso só editando o
+ * localStorage do browser, porque o servidor voltaria a verificar a
+ * assinatura HMAC do token.
+ */
+async function adminFarmacias(request, store) {
+  const payload = autenticarPedido(request);
+  if (!payload) return jsonResponse({ error: "Sessão inválida ou expirada." }, 401);
+  if (!payload.isSuperAdmin) return jsonResponse({ error: "Sem permissões de administração." }, 403);
+
+  try {
+    const { blobs } = await store.list({ prefix: "conta:" });
+    const farmacias = [];
+    for (const { key } of blobs) {
+      const conta = await store.get(key, { type: "json" });
+      if (!conta) continue;
+      farmacias.push({
+        tenantId: conta.tenantId, email: conta.email, nomeFarmacia: conta.nomeFarmacia,
+        criadoEm: conta.criadoEm || null
+      });
+    }
+    farmacias.sort((a, b) => String(a.criadoEm || "").localeCompare(String(b.criadoEm || "")));
+    return jsonResponse({ farmacias });
+  } catch (err) {
+    return jsonResponse({ error: "Falha ao listar farmácias.", detail: String(err) }, 500);
+  }
 }

@@ -41,18 +41,26 @@ function partKey(key, i) { return `${key}:part:${i}`; }
 
 let cache = null;
 let cacheLoaded = false;
+// Ponto 50 (bloqueio otimista): revisão do estado tal como o servidor a
+// devolveu na última leitura (cabeçalho X-Estado-Rev, nunca no corpo — ver
+// netlify/functions/data.js). Enviada de volta em cada PUT para o servidor
+// poder recusar (409) uma gravação baseada num instantâneo já ultrapassado
+// por outro separador/dispositivo, em vez de a deixar apagar em silêncio o
+// que esse outro gravou entretanto.
+let estadoRev = null;
 
 async function ensureLoaded() {
   if (cacheLoaded) return cache;
   const res = await fetchAutenticado(API_URL, { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`Não foi possível ler os dados do servidor (HTTP ${res.status}).`);
+  estadoRev = res.headers.get("x-estado-rev");
   const data = await res.json();
   cache = { servicos: data.servicos || [], categorias: data.categorias || [], config: data.config || {} };
   cacheLoaded = true;
   return cache;
 }
 
-async function persist() {
+async function persistUmaVez() {
   // O logótipo já não é gravado aqui (ver getAsset/setAsset "branding-logo"
   // mais abaixo) — só ainda pode estar presente em `cache.config.logo` por
   // termos lido uma conta antiga, de antes desta mudança. Omitimo-lo
@@ -62,12 +70,39 @@ async function persist() {
   // desta gravação — sem precisar de nenhum passo de migração à parte.
   const configParaEnviar = { ...(cache.config || {}) };
   delete configParaEnviar.logo;
-  const res = await fetchAutenticado(API_URL, {
+  const headers = { "Content-Type": "application/json" };
+  if (estadoRev != null) headers["X-Estado-Rev"] = estadoRev;
+  return fetchAutenticado(API_URL, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ ...cache, config: configParaEnviar })
   });
-  if (!res.ok) throw new Error(`Não foi possível gravar os dados no servidor (HTTP ${res.status}).`);
+}
+
+/**
+ * Ponto 50: grava com bloqueio otimista. Se o servidor recusar por conflito
+ * (409 — outro separador/dispositivo gravou entretanto), relê o estado
+ * fresco, reaplica as MESMAS mudanças que esta chamada já tinha feito no
+ * cache local (guardadas em `reaplicarMudancas`, chamada de novo sobre o
+ * estado fresco) e tenta gravar outra vez — no máximo 3 vezes, para nunca
+ * ficar preso num ciclo infinito se algo estiver mesmo mal.
+ */
+async function persist(reaplicarMudancas) {
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    const res = await persistUmaVez();
+    if (res.ok) {
+      estadoRev = res.headers.get("x-estado-rev") || estadoRev;
+      return;
+    }
+    if (res.status === 409 && reaplicarMudancas) {
+      cacheLoaded = false;
+      await ensureLoaded(); // relê o estado fresco e a revisão nova
+      reaplicarMudancas(cache);
+      continue;
+    }
+    throw new Error(`Não foi possível gravar os dados no servidor (HTTP ${res.status}).`);
+  }
+  throw new Error("Não foi possível gravar os dados no servidor: conflito de gravação persistente (demasiadas tentativas).");
 }
 
 export function makeDataStore() {
@@ -80,9 +115,9 @@ export function makeDataStore() {
     },
     async putAll(storeName, items) {
       await ensureLoaded();
-      if (storeName === "servicos") cache.servicos = items;
-      else if (storeName === "categorias") cache.categorias = items;
-      await persist();
+      const aplicar = (c) => { if (storeName === "servicos") c.servicos = items; else if (storeName === "categorias") c.categorias = items; };
+      aplicar(cache);
+      await persist(aplicar);
     },
     async put() { /* "activity" deixou de ser persistida remotamente — ninguém a lê de volta */ },
     async delete() { /* idem */ },
@@ -92,13 +127,15 @@ export function makeDataStore() {
     },
     async setConfig(key, value) {
       await ensureLoaded();
-      cache.config = { ...(cache.config || {}), [key]: value };
-      await persist();
+      const aplicar = (c) => { c.config = { ...(c.config || {}), [key]: value }; };
+      aplicar(cache);
+      await persist(aplicar);
     },
     async clearAll() {
+      const aplicar = (c) => { c.servicos = []; c.categorias = []; c.config = {}; };
       cache = { servicos: [], categorias: [], config: {} };
       cacheLoaded = true;
-      await persist();
+      await persist(aplicar);
     },
     /** Força ir novamente ao servidor buscar o estado mais recente (usado no refresh manual e no polling). */
     async refresh() {
@@ -119,6 +156,7 @@ export function makeDataStore() {
     async getEstadoCompleto() {
       const res = await fetchAutenticado(API_URL, { headers: { Accept: "application/json" } });
       if (!res.ok) throw new Error(`Não foi possível ler o estado completo do servidor (HTTP ${res.status}).`);
+      estadoRev = res.headers.get("x-estado-rev");
       return res.json();
     },
 
@@ -134,17 +172,31 @@ export function makeDataStore() {
      * ser gravado.
      */
     async gravarEstadoCompleto(estadoCompleto) {
-      const res = await fetchAutenticado(API_URL, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(estadoCompleto)
-      });
-      if (!res.ok) {
+      // Ponto 50: tenta com a revisão já conhecida (da última leitura feita
+      // por getEstadoCompleto/ensureLoaded); se entretanto outra gravação
+      // mudou a revisão no servidor (409), relê só a revisão nova e volta a
+      // tentar com o MESMO conteúdo (uma restauração/reparação é, por
+      // natureza, escrever exatamente isto — não faz sentido "reaplicar uma
+      // mudança" como nas gravações incrementais de putAll/setConfig acima).
+      for (let tentativa = 1; tentativa <= 3; tentativa++) {
+        const headers = { "Content-Type": "application/json" };
+        if (estadoRev != null) headers["X-Estado-Rev"] = estadoRev;
+        const res = await fetchAutenticado(API_URL, { method: "PUT", headers, body: JSON.stringify(estadoCompleto) });
+        if (res.ok) {
+          estadoRev = res.headers.get("x-estado-rev") || estadoRev;
+          cache = null;
+          cacheLoaded = false;
+          return;
+        }
+        if (res.status === 409) {
+          const corpoConflito = await res.json().catch(() => ({}));
+          estadoRev = corpoConflito.rev != null ? String(corpoConflito.rev) : res.headers.get("x-estado-rev");
+          continue;
+        }
         const corpo = await res.json().catch(() => ({}));
         throw new Error(corpo.error || `Não foi possível gravar o estado completo (HTTP ${res.status}).`);
       }
-      cache = null;
-      cacheLoaded = false;
+      throw new Error("Não foi possível gravar o estado completo: conflito de gravação persistente (demasiadas tentativas).");
     },
 
     /**

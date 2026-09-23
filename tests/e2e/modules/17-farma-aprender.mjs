@@ -37,8 +37,11 @@ export async function run(browser) {
   await page.locator('[data-sub="treino"]').click();
   await page.waitForTimeout(200);
   const statusAliases = await page.locator('#statusAliasesTreino').innerText();
+  // ponto 46: mensagem reforçada para deixar claro PORQUE o botão está
+  // desativado (achado real da investigação: um botão só cinzento, sem
+  // motivo à vista, foi confundido com "não funciona").
   ok('Aprender/Treino: sem aliases ensinados ainda, avisa que precisa de pelo menos 3',
-    /Precisa de pelo menos 3/.test(statusAliases), statusAliases);
+    /precisa de pelo menos 3/i.test(statusAliases), statusAliases);
   const btnTreinarDesabilitado = await page.locator('#btnTreinarAgora').isDisabled();
   ok('Aprender/Treino: o botão "Treinar agora" fica desabilitado sem aliases suficientes', btnTreinarDesabilitado);
   const chkPartilhadoDesabilitado = await page.locator('#chkUsarPartilhado').isDisabled();

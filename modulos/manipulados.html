@@ -435,13 +435,23 @@
     </div>
     <div class="modal-body">
       <p style="font-size:13px;color:var(--ink-soft);line-height:1.55;margin-top:0;">
-        Usadas para preencher o pedido de orçamento ao laboratório (botão "✉ Pedir orçamento" em cada
-        pedido). Pode sempre rever e alterar o email antes de o enviar.
+        Ao criar um <b>novo pedido</b>, o sistema abre automaticamente a pré-visualização do pedido de
+        orçamento ao laboratório, já com a(s) receita(s) anexada(s) (quando existe uma Web App de envio
+        configurada — ver abaixo). Pode sempre rever, trocar o fornecedor, editar o texto, ou simplesmente
+        não enviar. Também pode voltar a abrir esta pré-visualização em qualquer pedido já guardado, com
+        o botão "✉ Pedir orçamento".
       </p>
+      <label>Enviar automaticamente</label>
+      <div class="status-picker" style="margin-bottom:14px;">
+        <button type="button" id="autoEmailOnBtn" onclick="setAutoEmail(true)">Ativado</button>
+        <button type="button" id="autoEmailOffBtn" onclick="setAutoEmail(false)">Desativado</button>
+      </div>
       <label>Endereço da Web App de envio (Google Apps Script, opcional)</label>
       <input type="text" id="sheetsUrl" placeholder="https://script.google.com/macros/s/AKfycb.../exec" style="margin-bottom:6px;">
       <p style="font-size:11.5px;color:var(--ink-soft);margin:0 0 16px;line-height:1.5;">
-        Sem esta ligação, o email é preparado mas terá de ser enviado manualmente a partir do seu programa de email habitual.
+        Sem esta ligação, o email é preparado mas terá de ser enviado manualmente a partir do seu programa
+        de email habitual — nesse caso, a(s) receita(s) também têm de ser anexada(s) à mão, porque um link
+        "mailto:" nunca consegue anexar ficheiros sozinho.
       </p>
 
       <div class="section-title first">Fornecedores / laboratórios</div>
@@ -529,6 +539,7 @@
       <input type="text" id="ep_subject" style="margin-bottom:10px;">
       <label>Mensagem</label>
       <textarea id="ep_body" style="min-height:220px;font-family:'Inter',sans-serif;"></textarea>
+      <div id="ep_attachments" style="margin-top:10px;font-size:12px;color:var(--ink-soft);"></div>
     </div>
     <div class="modal-foot">
       <button class="danger-link" onclick="closeEmailPreview()">Não enviar</button>
@@ -604,12 +615,19 @@ function aplicarBrandingFarmacia(){
   }
 }
 
+// Ponto 50 (bloqueio otimista): revisão do estado devolvida pelo servidor no
+// cabeçalho X-Estado-Rev (nunca no corpo — ver netlify/functions/data.js).
+// Reenviada em cada PUT: se outro dispositivo/separador gravou entretanto,
+// o servidor recusa com 409 em vez de deixar esta gravação apagar em
+// silêncio o que esse outro gravou.
+let ESTADO_REV = null;
 async function fetchEstado(){
   const token = getToken();
   if(!token){ voltarACentral(); throw new Error('sem sessão'); }
   const res = await fetch('/api/data', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
   if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
   if(!res.ok) throw new Error('HTTP ' + res.status);
+  ESTADO_REV = res.headers.get('X-Estado-Rev');
   const dados = await res.json();
   ESTADO_BRANDING_CACHE = dados;
   aplicarBrandingFarmacia();
@@ -634,7 +652,9 @@ carregarLogoAsset();
    estado. Mesmo padrão (e mesma correção) já aplicado em pim.html/
    gabinete.html com uma fila `gravarQueue`/`enqueueSync`: cada gravação só
    começa (e por isso só lê o estado do servidor) depois do PUT da
-   anterior já ter respondido. */
+   anterior já ter respondido. Isto protege contra corridas DENTRO da mesma
+   aba — não contra duas abas/dispositivos, ver o bloqueio otimista (ponto
+   50, `ESTADO_REV` acima e o retry em 409 abaixo). */
 let gravarQueue = Promise.resolve();
 function enqueueSync(task){
   const run = gravarQueue.then(task, task);
@@ -642,18 +662,25 @@ function enqueueSync(task){
   return run;
 }
 async function gravarManipulados(novaLista){
-  const estadoAtual = await fetchEstado();
   const token = getToken();
-  // Logótipo omitido de propósito (ver carregarLogoAsset acima).
-  const configSemLogo = { ...(estadoAtual.config || {}) };
-  delete configSemLogo.logo;
-  const res = await fetch('/api/data', {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...estadoAtual, config: configSemLogo, manipulados: novaLista })
-  });
-  if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
-  if(!res.ok) throw new Error('HTTP ' + res.status);
+  for(let tentativa=1; tentativa<=3; tentativa++){
+    const estadoAtual = await fetchEstado();
+    // Logótipo omitido de propósito (ver carregarLogoAsset acima).
+    const configSemLogo = { ...(estadoAtual.config || {}) };
+    delete configSemLogo.logo;
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    if(ESTADO_REV != null) headers['X-Estado-Rev'] = ESTADO_REV;
+    const res = await fetch('/api/data', {
+      method: 'PUT', headers,
+      body: JSON.stringify({ ...estadoAtual, config: configSemLogo, manipulados: novaLista })
+    });
+    if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
+    if(res.status === 409){ continue; } // outro dispositivo/separador gravou entretanto — relê (próxima iteração) e tenta de novo
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    ESTADO_REV = res.headers.get('X-Estado-Rev') || ESTADO_REV;
+    return;
+  }
+  throw new Error('Não foi possível gravar: conflito de gravação persistente. Tente novamente.');
 }
 
 if(!getToken()) voltarACentral();
@@ -1110,6 +1137,7 @@ async function saveCurrent(){
     isNew = true;
     pedidos.unshift({id:uid(), criado: todayISO(), ...payload});
   }
+  const novoPedido = isNew ? pedidos[0] : null;
   if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
   closeModal();
   render();
@@ -1130,6 +1158,16 @@ async function saveCurrent(){
     }
   }
   showToast(isNew ? 'Novo pedido criado.' : 'Pedido atualizado.');
+
+  // Ponto 44: ao criar um novo pedido, disparar logo a pré-visualização do
+  // pedido de orçamento ao laboratório (com a(s) receita(s) já anexada(s)),
+  // em vez de obrigar a reabrir o pedido e clicar "✉ Pedir orçamento" à
+  // parte — pedido direto do Ivo. Nunca envia sozinho: fica sempre à espera
+  // de "Enviar email" ou "Não enviar" no modal, tal como no envio manual.
+  // Pode ser desligado em "✉ Definições de email" → "Enviar automaticamente".
+  if(isNew && novoPedido && getEmailSettings().auto !== false){
+    await sendBudgetEmail(novoPedido);
+  }
 }
 async function deleteCurrent(){
   if(!editingId) return;
@@ -1267,6 +1305,7 @@ const EMAIL_SETTINGS_KEY = 'famam_email_settings';
 function getEmailSettings(){
   let s;
   try{ s = JSON.parse(localStorage.getItem(EMAIL_SETTINGS_KEY)) || {}; }catch(e){ s = {}; }
+  if(s.auto === undefined) s.auto = true; // ponto 44: por omissão, novo pedido dispara logo a pré-visualização
   if(!s.url) s.url = '';
   if(!Array.isArray(s.fornecedores)){
     // Migração do formato antigo (só {dest}) para a lista de Fornecedores.
@@ -1281,8 +1320,16 @@ function fornecedorPadrao(settings){
 }
 
 let tempFornecedores = [];
+let tempAutoEmail = true;
+function setAutoEmail(v){ tempAutoEmail = v; updateAutoEmailButtons(); }
+function updateAutoEmailButtons(){
+  document.getElementById('autoEmailOnBtn').classList.toggle('sel', tempAutoEmail);
+  document.getElementById('autoEmailOffBtn').classList.toggle('sel', !tempAutoEmail);
+}
 function openEmailSettingsModal(){
   const s = getEmailSettings();
+  tempAutoEmail = s.auto !== false;
+  updateAutoEmailButtons();
   document.getElementById('sheetsUrl').value = s.url || '';
   tempFornecedores = s.fornecedores.map(f=>({...f}));
   window.tempFornecedores = tempFornecedores; // os campos do modal usam handlers inline (oninput="tempFornecedores[i]...") que correm no escopo global, não no escopo deste <script type="module"> — mesmo motivo do window.draftStock em gabinete.html (ver ponto 34/36)
@@ -1328,7 +1375,7 @@ function saveEmailSettings(){
   // Descarta linhas em branco (sem nome nem email) que tenham ficado por preencher.
   const fornecedores = tempFornecedores.filter(f=>(f.nome&&f.nome.trim())||(f.to&&f.to.trim()));
   if(fornecedores.length && !fornecedores.some(f=>f.padrao)) fornecedores[0].padrao = true;
-  localStorage.setItem(EMAIL_SETTINGS_KEY, JSON.stringify({url, fornecedores}));
+  localStorage.setItem(EMAIL_SETTINGS_KEY, JSON.stringify({url, fornecedores, auto: tempAutoEmail}));
   closeEmailSettingsModal();
   showToast('Definições de email guardadas.');
 }
@@ -1506,7 +1553,8 @@ function saveEmailTemplate(){
   showToast('Modelo de email guardado — passa a ser usado em todos os pedidos de orçamento.');
 }
 
-function sendBudgetEmail(p){
+let previewAttachments = [];
+async function sendBudgetEmail(p){
   // Bug real e pré-existente corrigido no ponto 37 (encontrado durante os
   // testes automáticos desta sessão, não reportado pelo Ivo): o botão "✉
   // Pedir orçamento" chamava esta função com `pedidos.find(x=>x.id===editingId)`
@@ -1533,6 +1581,26 @@ function sendBudgetEmail(p){
   document.getElementById('ep_cc').value = content.cc;
   document.getElementById('ep_subject').value = content.subject;
   document.getElementById('ep_body').value = content.body;
+
+  // Ponto 44: anexar a(s) receita(s) do pedido ao email de pedido de
+  // orçamento — mesmo mecanismo (nome/tipo/data em base64) já usado em
+  // modulos/aue.html para os documentos do armazenista. Resolve-se aqui,
+  // não ao guardar, para só carregar os ficheiros quando a pré-visualização
+  // é mesmo aberta.
+  const anexosAttEl = document.getElementById('ep_attachments');
+  anexosAttEl.textContent = (p.anexos && p.anexos.length) ? 'A preparar anexos…' : 'Sem anexos.';
+  previewAttachments = [];
+  for(const a of (p.anexos || [])){
+    let data = a.data;
+    if(!data && a.remoteId){
+      try{ data = await dataStore.getAsset(a.remoteId); }catch(e){ data = null; }
+    }
+    if(data) previewAttachments.push({name:a.name, type:a.type, data});
+  }
+  anexosAttEl.textContent = previewAttachments.length
+    ? 'Anexos: ' + previewAttachments.map(a=>a.name).join(', ')
+    : ((p.anexos && p.anexos.length) ? 'Não foi possível carregar os anexos deste pedido.' : 'Sem anexos.');
+
   document.getElementById('emailPreviewOverlay').classList.add('open');
 }
 function aplicarFornecedorEscolhido(){
@@ -1545,6 +1613,7 @@ function aplicarFornecedorEscolhido(){
 function closeEmailPreview(){
   document.getElementById('emailPreviewOverlay').classList.remove('open');
   pendingEmailPedido = null;
+  previewAttachments = [];
 }
 function confirmSendEmail(){
   const dest = document.getElementById('ep_to').value.trim();
@@ -1558,10 +1627,20 @@ function confirmSendEmail(){
   if(!url){
     // Sem Web App configurada: abre o cliente de email do próprio
     // utilizador, já preenchido — funciona para qualquer farmácia, sem
-    // precisar de nenhuma conta/serviço configurado à parte.
-    let mailto = `mailto:${encodeURIComponent(dest)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+    // precisar de nenhuma conta/serviço configurado à parte. Um link
+    // "mailto:" nunca consegue anexar ficheiros (limitação do próprio
+    // browser/SO, não algo que dê para contornar em código) — por isso, se
+    // houver anexos, avisa-se claramente em vez de os enviar silenciosamente
+    // em falta (mesma solução já usada em modulos/aue.html).
+    const extra = previewAttachments.length
+      ? ('\n\n(Anexe manualmente a(s) receita(s) guardada(s) neste pedido — ' + previewAttachments.map(a=>a.name).join(', ') + ')')
+      : '';
+    let mailto = `mailto:${encodeURIComponent(dest)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText + extra)}`;
     if(cc){ mailto += '&cc=' + encodeURIComponent(cc); }
     window.open(mailto, '_blank');
+    showToast(previewAttachments.length
+      ? 'Sem Web App de envio configurada — abrimos o seu programa de email. Não se esqueça de anexar a(s) receita(s) à mão.'
+      : 'Sem Web App de envio configurada — abrimos o seu programa de email.');
     if(window.ModuleChrome) window.ModuleChrome.registarUso('manipulados', 'enviar_orcamento');
     closeEmailPreview();
     return;
@@ -1576,9 +1655,9 @@ function confirmSendEmail(){
                     // não conseguimos ler a resposta, mas o pedido chega e o script corre na mesma
                     // (mesmo mecanismo já usado em modulos/aue.html).
     headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({action:'sendEmail', to:dest, cc, subject, body:bodyText})
+    body: JSON.stringify({action:'sendEmail', to:dest, cc, subject, body:bodyText, attachments: previewAttachments})
   }).then(()=>{
-    showToast('Pedido de envio enviado para ' + dest + (cc?(' (CC: '+cc+')'):'') + '. Confirme na pasta "Enviados" da conta Google ligada à Web App.');
+    showToast('Pedido de envio enviado para ' + dest + (cc?(' (CC: '+cc+')'):'') + (previewAttachments.length ? ' com ' + previewAttachments.length + ' anexo(s).' : '.') + ' Confirme na pasta "Enviados" da conta Google ligada à Web App.');
     if(window.ModuleChrome) window.ModuleChrome.registarUso('manipulados', 'enviar_orcamento');
   }).catch(()=>{
     showToast('Não foi possível contactar a Web App (sem ligação à internet ou endereço incorreto). Verifique as Definições de email.');
@@ -1626,6 +1705,7 @@ window.saveCurrent = saveCurrent;
 window.saveEmailSettings = saveEmailSettings;
 window.saveEmailTemplate = saveEmailTemplate; // ponto 38
 window.sendBudgetEmail = sendBudgetEmail;
+window.setAutoEmail = setAutoEmail; // ponto 44
 window.setFilter = setFilter;
 window.setFornecedorPadrao = setFornecedorPadrao;
 window.toggleSidebar = toggleSidebar;

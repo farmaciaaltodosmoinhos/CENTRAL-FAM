@@ -95,3 +95,20 @@ export function novoTenantId() {
 export function normalizarEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
+
+/**
+ * Ponto 54 — Painel Developer/Super-Admin. Um email é super-admin se
+ * constar da variável de ambiente SUPER_ADMIN_EMAILS (lista separada por
+ * vírgulas, definida uma única vez no painel do Netlify — Site settings →
+ * Environment variables — nunca gravada em lado nenhum do código). Não
+ * existe um papel "admin" separado na conta: a MESMA conta/farmácia que já
+ * usas para entrar ganha acesso extra quando o teu email está nesta lista —
+ * sem login nem palavra-passe adicional.
+ */
+export function ehSuperAdmin(email) {
+  const lista = String(process.env.SUPER_ADMIN_EMAILS || "")
+    .split(",")
+    .map(e => normalizarEmail(e))
+    .filter(Boolean);
+  return lista.includes(normalizarEmail(email));
+}

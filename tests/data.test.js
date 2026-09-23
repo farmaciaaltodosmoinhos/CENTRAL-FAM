@@ -14,11 +14,10 @@ function reqGet(token) {
     method: "GET", headers: token ? { authorization: `Bearer ${token}` } : {}
   });
 }
-function reqPut(token, body) {
-  return new Request("https://site.netlify.app/api/data", {
-    method: "PUT", headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify(body)
-  });
+function reqPut(token, body, rev) {
+  const headers = { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) };
+  if (rev !== undefined) headers["x-estado-rev"] = String(rev);
+  return new Request("https://site.netlify.app/api/data", { method: "PUT", headers, body: JSON.stringify(body) });
 }
 
 describe("/api/data — autenticação", () => {
@@ -137,5 +136,75 @@ describe("/api/data — merges sucessivos preservam campos de vários módulos a
     assert.deepEqual(estado.manipulados, [{ id: "m1" }]);
     assert.deepEqual(estado.gabinete, { itens: [] });
     assert.deepEqual(estado.servicos, [{ id: "s1" }]);
+  });
+});
+
+describe("/api/data — bloqueio otimista (ponto 50)", () => {
+  test("GET devolve a revisão no cabeçalho X-Estado-Rev, começando em 0 para um tenant novo", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    const res = await handleRequest(reqGet(tokenA), getStoreImpl);
+    assert.equal(res.headers.get("x-estado-rev"), "0");
+  });
+
+  test("um PUT sem cabeçalho X-Estado-Rev continua a funcionar sem bloqueio nenhum (compatibilidade)", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    const res = await handleRequest(reqPut(tokenA, { servicos: [{ id: "s1" }], categorias: [], config: {} }), getStoreImpl);
+    assert.equal(res.status, 200);
+    const corpo = await res.json();
+    assert.equal(corpo.rev, 1); // avança na mesma, mesmo sem o cliente pedir bloqueio
+  });
+
+  test("um PUT com a revisão certa é aceite e avança a revisão", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    const resGet1 = await handleRequest(reqGet(tokenA), getStoreImpl);
+    const rev0 = resGet1.headers.get("x-estado-rev");
+    const resPut = await handleRequest(reqPut(tokenA, { servicos: [{ id: "s1" }], categorias: [], config: {} }, rev0), getStoreImpl);
+    assert.equal(resPut.status, 200);
+    assert.equal(resPut.headers.get("x-estado-rev"), "1");
+  });
+
+  test("um PUT com uma revisão desatualizada (outro dispositivo gravou entretanto) devolve 409 e NÃO escreve", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    // duas "abas" leem o mesmo estado inicial (rev 0)
+    const revLidaPorAmbas = (await handleRequest(reqGet(tokenA), getStoreImpl)).headers.get("x-estado-rev");
+
+    // a 1ª grava com sucesso (rev 0 -> 1)
+    const res1 = await handleRequest(reqPut(tokenA, { servicos: [{ id: "da-primeira-aba" }], categorias: [], config: {} }, revLidaPorAmbas), getStoreImpl);
+    assert.equal(res1.status, 200);
+
+    // a 2ª tenta gravar com a revisão antiga (0) que já não bate certo (servidor está em 1)
+    const res2 = await handleRequest(reqPut(tokenA, { servicos: [{ id: "da-segunda-aba-desatualizada" }], categorias: [], config: {} }, revLidaPorAmbas), getStoreImpl);
+    assert.equal(res2.status, 409);
+    const corpoErro = await res2.json();
+    assert.equal(corpoErro.rev, 1); // informa a revisão real, para o cliente poder voltar a ler
+
+    // o estado gravado pela 1ª aba continua intacto — a 2ª gravação (com dados desatualizados) NÃO apagou nada
+    const estadoFinal = await (await handleRequest(reqGet(tokenA), getStoreImpl)).json();
+    assert.deepEqual(estadoFinal.servicos, [{ id: "da-primeira-aba" }]);
+  });
+
+  test("depois de um 409, voltar a ler e a gravar com a revisão nova funciona (o caminho de recuperação real dos módulos)", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    const revInicial = (await handleRequest(reqGet(tokenA), getStoreImpl)).headers.get("x-estado-rev");
+    await handleRequest(reqPut(tokenA, { servicos: [{ id: "primeira" }], categorias: [], config: {} }, revInicial), getStoreImpl);
+
+    // simula o módulo a reagir ao 409: relê o estado (agora já na rev 1) e volta a tentar
+    const resGetFresco = await handleRequest(reqGet(tokenA), getStoreImpl);
+    const revFresca = resGetFresco.headers.get("x-estado-rev");
+    assert.equal(revFresca, "1");
+    const resRetry = await handleRequest(reqPut(tokenA, { servicos: [{ id: "primeira" }, { id: "segunda" }], categorias: [], config: {} }, revFresca), getStoreImpl);
+    assert.equal(resRetry.status, 200);
+
+    const estadoFinal = await (await handleRequest(reqGet(tokenA), getStoreImpl)).json();
+    assert.deepEqual(estadoFinal.servicos, [{ id: "primeira" }, { id: "segunda" }]);
+  });
+
+  test("as revisões de duas farmácias diferentes são completamente independentes", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    await handleRequest(reqPut(tokenA, { servicos: [{ id: "a1" }], categorias: [], config: {} }, "0"), getStoreImpl);
+    await handleRequest(reqPut(tokenA, { servicos: [{ id: "a2" }], categorias: [], config: {} }, "1"), getStoreImpl);
+    // tenant B nunca gravou nada — continua na revisão 0, independente do avanço do tenant A
+    const revB = (await handleRequest(reqGet(tokenB), getStoreImpl)).headers.get("x-estado-rev");
+    assert.equal(revB, "0");
   });
 });

@@ -188,7 +188,15 @@
       <img id="brandLogoImg" style="display:none;" alt="Logótipo">
       <div class="glyph" id="brandGlyph">⚡</div>
       <div>
-        <h1>FARMA IA<small>Alertas, perguntas e oportunidades — sem nenhuma IA externa</small></h1>
+        <h1><span id="tituloAssistenteNome">FARMA</span> IA
+          <button type="button" class="btn-ghost" id="btnEditarNomeAssistente" title="Mudar o nome da assistente" style="font-size:12px;padding:2px 8px;margin-left:6px;vertical-align:middle;">✏️ Nome</button>
+          <small>Alertas, perguntas e oportunidades — sem nenhuma IA externa</small>
+        </h1>
+        <div id="popoverNomeAssistente" style="display:none;margin-top:6px;align-items:center;gap:6px;">
+          <input type="text" id="inputNomeAssistente" maxlength="30" placeholder="Nome da assistente" style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;">
+          <button type="button" class="btn-primary" id="btnGuardarNomeAssistente" style="font-size:12px;padding:4px 10px;">Guardar</button>
+          <button type="button" class="btn-ghost" id="btnCancelarNomeAssistente" style="font-size:12px;padding:4px 10px;">Cancelar</button>
+        </div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:14px;">
@@ -226,9 +234,13 @@
       </div>
       <div class="panel-body">
         <div class="cerebro-bar" id="cerebroBar">
-          <button type="button" class="btn-ghost" id="btnCarregarCerebro">Ativar compreensão livre (IA local, opcional)</button>
+          <button type="button" class="btn-ghost" id="btnCarregarCerebro">Ativar compreensão totalmente livre (IA local, opcional)</button>
           <span id="cerebroStatus" class="cerebro-status"></span>
         </div>
+        <p style="font-size:12px;color:var(--ink-soft);margin:-4px 0 14px;">
+          Pedidos de ação como "cria um pedido de manipulado para…" ou "marca o AUE da Maria como pronto" já funcionam sem precisar de ativar nada acima —
+          o botão só é preciso para pedidos em linguagem muito livre que fujam a estes padrões conhecidos.
+        </p>
         <div id="chatLog"></div>
         <div class="exemplos" id="exemplosPerguntas"></div>
         <form class="pergunta-form" id="formPergunta" autocomplete="off">
@@ -349,6 +361,7 @@ import {
 import { carregarUsoPeriodo, isoDia } from "../src/usoLeitura.js";
 import { listarModelosDisponiveis, carregarModeloLocal, perguntarAoCerebro } from "../src/ui/farmaCerebro.js";
 import { construirPromptSistema, prepararAcao, executarAcaoConfirmada, resolverComRaciocinio } from "../src/farmaAcoes.js";
+import { reconhecerAcaoDeterministica } from "../src/farmaAcoesIntent.js";
 import { carregarCatalogoEfetivo } from "../src/produtosCatalogo.js";
 // ponto 43 — aba "Aprender"
 import { gerarPropostas, registarPropostas, atualizarEstadoProposta, propostasPendentes } from "../src/farmaExplorarCentral.js";
@@ -375,6 +388,39 @@ const dataStore = makeDataStore();
    reagir sem esperar pela rede) e tentam gravar; uma falha de rede aqui
    nunca bloqueia o resto do módulo — a aprendizagem é um extra, não um
    requisito para a FARMA IA funcionar. */
+/* ---------------- ponto 46: nome personalizado da assistente ----------------
+ * Pedido do Ivo: "nas opções da farma deverá ter a opção de mudar de nome".
+ * Guardado em config.farmaNomeAssistente (mesmo mecanismo de config das
+ * outras definições desta página) — muda só como a assistente se apresenta
+ * (saudação, "Sou a X" na resposta de ajuda, mini-chat) e o título visível
+ * neste módulo. Não muda o id do módulo ("farma-ia") nem a entrada fixa
+ * "FARMA IA" na barra lateral/navegação — são identidade de navegação da
+ * app, não da assistente, e mudam de forma consistente para todas as
+ * farmácias; mudar isso também exigiria carregar esta configuração antes da
+ * barra lateral arrancar, um passo bem mais invasivo por um pedido que é,
+ * no fundo, sobre a conversa com a assistente. */
+let nomeAssistenteCache = null;
+async function obterNomeAssistente(){
+  if(nomeAssistenteCache) return nomeAssistenteCache;
+  try{ nomeAssistenteCache = (await dataStore.getConfig("farmaNomeAssistente")) || "FARMA"; }
+  catch(e){ nomeAssistenteCache = "FARMA"; }
+  return nomeAssistenteCache;
+}
+async function gravarNomeAssistente(novoNome){
+  const limpo = (novoNome || "").trim().slice(0, 30) || "FARMA";
+  nomeAssistenteCache = limpo;
+  try{ await dataStore.setConfig("farmaNomeAssistente", limpo); }
+  catch(e){ /* melhor esforço — o nome fica pelo menos aplicado nesta página até recarregar */ }
+  return limpo;
+}
+function aplicarNomeAssistenteNaUI(nome){
+  document.getElementById("tituloAssistenteNome").textContent = nome;
+  const input = document.getElementById("inputNomeAssistente");
+  if(input) input.value = nome;
+  const bolhaTitulo = document.getElementById("chatTituloBolha");
+  if(bolhaTitulo) bolhaTitulo.textContent = nome;
+}
+
 let memoriaCache = null;
 async function obterMemoria(){
   if(memoriaCache) return memoriaCache;
@@ -507,6 +553,36 @@ function mostrarLogo(src){
   img.src = src; img.style.display = "block"; glyph.style.display = "none";
 }
 
+/* ---------------- ponto 46: editor do nome da assistente ---------------- */
+(async function initEditorNomeAssistente(){
+  const nomeAtual = await obterNomeAssistente();
+  aplicarNomeAssistenteNaUI(nomeAtual);
+})();
+document.getElementById("btnEditarNomeAssistente").addEventListener("click", () => {
+  const pop = document.getElementById("popoverNomeAssistente");
+  const abrir = pop.style.display === "none";
+  pop.style.display = abrir ? "flex" : "none";
+  if(abrir) document.getElementById("inputNomeAssistente").focus();
+});
+document.getElementById("btnCancelarNomeAssistente").addEventListener("click", () => {
+  document.getElementById("popoverNomeAssistente").style.display = "none";
+  aplicarNomeAssistenteNaUI(nomeAssistenteCache || "FARMA");
+});
+document.getElementById("btnGuardarNomeAssistente").addEventListener("click", async () => {
+  const btn = document.getElementById("btnGuardarNomeAssistente");
+  const input = document.getElementById("inputNomeAssistente");
+  btn.disabled = true;
+  const novoNome = await gravarNomeAssistente(input.value);
+  aplicarNomeAssistenteNaUI(novoNome);
+  document.getElementById("popoverNomeAssistente").style.display = "none";
+  btn.disabled = false;
+  window.ModuleChrome.registarUso("farma-ia", "renomear_assistente");
+});
+document.getElementById("inputNomeAssistente").addEventListener("keydown", (e) => {
+  if(e.key === "Enter"){ e.preventDefault(); document.getElementById("btnGuardarNomeAssistente").click(); }
+  if(e.key === "Escape"){ e.preventDefault(); document.getElementById("btnCancelarNomeAssistente").click(); }
+});
+
 function setSyncStatus(estado, texto){
   const el = document.getElementById("syncStatus");
   el.className = estado;
@@ -540,12 +616,14 @@ const bar = window.ModuleChrome.mountBottomBar([
  * saber o nome da farmácia com sessão iniciada — não o nome de um funcionário
  * específico. Usa o nome já em cache local (sem pedido extra ao servidor); se
  * ainda não houver cache (1ª visita), cumprimenta de forma genérica. */
-(function saudarAoAbrir(){
+(async function saudarAoAbrir(){
   const cache = window.ModuleChrome.getCachedBranding ? window.ModuleChrome.getCachedBranding() : null;
-  const nome = cache && cache.nomeFarmacia;
-  const texto = nome
-    ? `Olá! Sou a FARMA, a assistente da ${nome}. Em que posso ajudar?`
-    : `Olá! Sou a FARMA. Em que posso ajudar?`;
+  const nomeFarmacia = cache && cache.nomeFarmacia;
+  const nomeAssistente = await obterNomeAssistente();
+  aplicarNomeAssistenteNaUI(nomeAssistente);
+  const texto = nomeFarmacia
+    ? `Olá! Sou a ${nomeAssistente}, a assistente da ${nomeFarmacia}. Em que posso ajudar?`
+    : `Olá! Sou a ${nomeAssistente}. Em que posso ajudar?`;
   adicionarMensagem(texto, "resposta");
 })();
 
@@ -789,7 +867,54 @@ document.getElementById("formPergunta").addEventListener("submit", async (e) => 
     const memoria = await obterMemoria();
     const pesosRede = await obterPesosEfetivos();
     const baseConhecimento = await obterBaseConhecimento();
-    const contexto = { diasUso, memoria, pesosRede, baseConhecimento };
+    const contexto = { diasUso, memoria, pesosRede, baseConhecimento, nomeAssistente: nomeAssistenteCache || await obterNomeAssistente() };
+
+    // ponto 46: reconhecimento de ações SEM IA nenhuma, nem local nem
+    // externa — pedido explícito do Ivo ("liga directamente o motor de
+    // ações da farma"). Corre ANTES do motor de perguntas/respostas de
+    // propósito: uma frase como "cria um pedido de manipulado para a Ana
+    // Costa..." partilha vocabulário de domínio com intents de pergunta
+    // (p.ex. "manipulado" também está no grupo de palavras de
+    // pedidos_manipulados), e o motor de perguntas casa por qualquer
+    // palavra-chave isolada em qualquer posição do texto — se este
+    // reconhecimento corresse só depois (como acontecia antes desta
+    // correção), o motor de perguntas intercetava sempre estes pedidos com
+    // uma resposta enlatada, e o cartão de ação nunca chegava a aparecer.
+    // Os gatilhos deste reconhecimento exigem sempre um verbo de ação
+    // explícito (cria, marca, adiciona, remove, ...) além da âncora de
+    // domínio, pelo que perguntas genuínas (interrogativas, sem esse verbo)
+    // nunca são afetadas — ver tests/farmaAcoesIntent.test.js, casos de
+    // controlo negativo. Disponível sempre, mesmo sem ter carregado a IA
+    // local (o "cérebro" abaixo, que continua a existir como caminho de
+    // reserva para pedidos mais livres que este reconhecimento por padrões
+    // não cobre). Nunca executa nada sozinho — só chega ao mesmo cartão
+    // "Confirmar/Cancelar" de sempre.
+    const reconhecimento = reconhecerAcaoDeterministica(pergunta);
+    if (reconhecimento) {
+      window.ModuleChrome.registarUso("farma-ia", "perguntar");
+      if (reconhecimento.tipo === "incompleta") {
+        adicionarMensagem(reconhecimento.motivo, "resposta");
+        return;
+      }
+      try {
+        let estadoParaAcao = estado;
+        if (reconhecimento.acaoId.startsWith("catalogo.")) {
+          const catalogo = await carregarCatalogoEfetivo(dataStore);
+          estadoParaAcao = { ...estado, catalogoProdutos: catalogo.products };
+        }
+        const preparado = prepararAcao(reconhecimento.acaoId, reconhecimento.parametros, estadoParaAcao);
+        if (preparado.ok) {
+          mostrarCartaoAcao(preparado.resumo, preparado.plano, contexto);
+        } else {
+          adicionarMensagem(preparado.motivo, "resposta");
+        }
+      } catch (e) {
+        console.error("FARMA IA — falha ao preparar ação reconhecida:", e);
+        adicionarMensagem("Percebi o que queria fazer, mas não consegui preparar a ação agora. Tente outra vez.", "resposta");
+      }
+      return;
+    }
+
     const { resposta, intentId, viaAprendizagem, viaRedeNeural, sugestoes } = responderPergunta(pergunta, estado, contexto);
     window.ModuleChrome.registarUso("farma-ia", "perguntar");
     if (intentId) {
@@ -802,6 +927,7 @@ document.getElementById("formPergunta").addEventListener("submit", async (e) => 
     await gravarMemoria(registarPerguntaNaoReconhecida(memoria, pergunta, new Date()));
     const painelRevisao = document.getElementById("revisaoNaoReconhecidas");
     if(painelRevisao?.open) renderizarNaoReconhecidas();
+
     if (cerebroEngine) {
       let statusPensar = null;
       try {
@@ -989,8 +1115,12 @@ async function atualizarStatusAliasesTreino(){
   const n = Object.keys(memoria.aliases || {}).length;
   elStatus.textContent = n >= 3
     ? `${n} pergunta${n===1?"":"s"} ensinada${n===1?"":"s"} ${n===1?"disponível":"disponíveis"} para treino.`
-    : `Precisa de pelo menos 3 perguntas ensinadas para treinar (tem ${n}). Ensine perguntas na aba "Perguntar".`;
-  document.getElementById("btnTreinarAgora").disabled = n < 3;
+    : `⚠️ O botão "Treinar agora" está desativado (a cinzento) porque ainda só ensinou ${n} pergunta${n===1?"":"s"} — precisa de pelo menos 3. Ensine perguntas na aba "Perguntar" (quando a FARMA não reconhecer uma pergunta, aparece a opção de a ensinar) e volte aqui.`;
+  const btnTreinar = document.getElementById("btnTreinarAgora");
+  btnTreinar.disabled = n < 3;
+  btnTreinar.title = n < 3
+    ? `Precisa de pelo menos 3 perguntas ensinadas (tem ${n}) — ver aba "Perguntar".`
+    : "";
 
   let treinoLocal = null;
   try{ treinoLocal = await dataStore.getConfig("farmaTreinoLocal"); }catch(e){ /* segue sem treino local */ }
@@ -1046,8 +1176,12 @@ document.getElementById("btnTreinarAgora").addEventListener("click", async () =>
     }
     renderRelatorioTreino(resultado.relatorio, resultado.aceite);
   }catch(e){
+    // ponto 46: nunca mostrar só "não foi possível" sem motivo — mostrar
+    // sempre o detalhe real do erro (e registá-lo na consola), para o
+    // problema ser diagnosticável em vez de um botão que "não faz nada".
+    console.error("FARMA IA — falha ao treinar localmente:", e);
     status.className = "aprender-status erro";
-    status.textContent = "Não foi possível treinar agora.";
+    status.textContent = "Não foi possível treinar agora (" + (e && e.message ? e.message : "erro inesperado") + "). Tente novamente — se persistir, avise o suporte com esta mensagem.";
   }finally{
     btn.disabled = false;
   }

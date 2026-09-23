@@ -675,6 +675,7 @@
 <script type="module">
 import { aoExpirarSessao, makeDataStore } from "../src/db.js";
 import { getToken, limparSessao, getPerfil } from "../src/authClient.js";
+import { validarNif, validarEmail, validarTelefone } from "../src/utils.js";
 
 function voltarACentral(){
   window.top.location.href = "/";
@@ -730,12 +731,19 @@ function aplicarBrandingFarmacia(){
   if(img) img.src = logoFarmaciaAtual() || FARMACIA_LOGO_SRC;
 }
 
+// Ponto 50 (bloqueio otimista): revisão do estado devolvida pelo servidor no
+// cabeçalho X-Estado-Rev (nunca no corpo — ver netlify/functions/data.js).
+// Reenviada em cada PUT: se outro dispositivo/separador gravou entretanto,
+// o servidor recusa com 409 em vez de deixar esta gravação apagar em
+// silêncio o que esse outro gravou.
+let ESTADO_REV = null;
 async function fetchEstado(){
   const token = getToken();
   if(!token){ voltarACentral(); throw new Error('sem sessão'); }
   const res = await fetch('/api/data', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
   if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
   if(!res.ok) throw new Error('HTTP ' + res.status);
+  ESTADO_REV = res.headers.get('X-Estado-Rev');
   const dados = await res.json();
   ESTADO_BRANDING_CACHE = dados;
   aplicarBrandingFarmacia();
@@ -746,19 +754,26 @@ aplicarBrandingFarmacia();
 carregarLogoAsset();
 
 async function gravarAue(key, value){
-  const estadoAtual = await fetchEstado();
   const token = getToken();
-  const novoAue = { ...(estadoAtual.aue || {}), [key]: value };
-  // Logótipo omitido de propósito (ver carregarLogoAsset acima).
-  const configSemLogo = { ...(estadoAtual.config || {}) };
-  delete configSemLogo.logo;
-  const res = await fetch('/api/data', {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...estadoAtual, config: configSemLogo, aue: novoAue })
-  });
-  if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
-  if(!res.ok) throw new Error('HTTP ' + res.status);
+  for(let tentativa=1; tentativa<=3; tentativa++){
+    const estadoAtual = await fetchEstado();
+    const novoAue = { ...(estadoAtual.aue || {}), [key]: value };
+    // Logótipo omitido de propósito (ver carregarLogoAsset acima).
+    const configSemLogo = { ...(estadoAtual.config || {}) };
+    delete configSemLogo.logo;
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    if(ESTADO_REV != null) headers['X-Estado-Rev'] = ESTADO_REV;
+    const res = await fetch('/api/data', {
+      method: 'PUT', headers,
+      body: JSON.stringify({ ...estadoAtual, config: configSemLogo, aue: novoAue })
+    });
+    if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
+    if(res.status === 409){ continue; } // outro dispositivo/separador gravou entretanto — relê (próxima iteração) e tenta de novo
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    ESTADO_REV = res.headers.get('X-Estado-Rev') || ESTADO_REV;
+    return;
+  }
+  throw new Error('Não foi possível gravar: conflito de gravação persistente. Tente novamente.');
 }
 
 /* ---------------- DATA ---------------- */
@@ -1349,6 +1364,32 @@ async function saveCurrent(){
   if(firstInvalid){
     showToast('Preencha os campos assinalados a vermelho.');
     firstInvalid.focus();
+    return;
+  }
+
+  // Ponto 49/52: até aqui só se confirmava que o NIF/Email/Telefone não
+  // estavam vazios, nunca que tinham um formato válido — um dígito trocado
+  // ou esquecido ao copiar do cartão de cidadão passava sempre (item real
+  // da auditoria de 20/09/2026, "Falta de Sanitização e Validação" no AUE).
+  // Validação de formato real, só depois de confirmado que os campos estão
+  // preenchidos (para a mensagem de erro ser específica: "vazio" e "formato
+  // errado" são coisas diferentes para quem está a preencher).
+  const elNif = document.getElementById('f_nif');
+  const elEmail = document.getElementById('f_email');
+  const elTelefone = document.getElementById('f_telefone');
+  const nifValido = validarNif(nif);
+  const emailValido = validarEmail(emailVal);
+  const telefoneValido = validarTelefone(telefone);
+  elNif.classList.toggle('field-error', !nifValido);
+  elEmail.classList.toggle('field-error', !emailValido);
+  elTelefone.classList.toggle('field-error', !telefoneValido);
+  if(!nifValido || !emailValido || !telefoneValido){
+    const problemas = [];
+    if(!nifValido) problemas.push('o NIF (o dígito de controlo não bate certo)');
+    if(!emailValido) problemas.push('o email (falta o "@" ou o domínio)');
+    if(!telefoneValido) problemas.push('o telefone (deve ter 9 dígitos, a começar por 2, 3, 6, 7, 8 ou 9)');
+    showToast('Verifique o formato de: ' + problemas.join('; ') + '.');
+    (!nifValido ? elNif : !emailValido ? elEmail : elTelefone).focus();
     return;
   }
 

@@ -185,6 +185,7 @@ mark{background:#cdeed4;color:var(--primary-darker);border-radius:4px;padding:0 
 .btn-icon-round.spin-once .icon{animation:spinOnce .5s linear;}
 @keyframes spinOnce{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 .btn-config{background:var(--surface-chip);border:none;padding:9px 18px;border-radius:var(--radius-pill);font-size:.85rem;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--primary);transition:.2s var(--ease);}
+.btn-config[hidden]{display:none;} /* ponto 54 — sem isto, [hidden] perde para o display:flex acima (mesma especificidade, esta regra vem depois) */
 .btn-config:hover{background:#d9eedf;}
 .btn-config.primary{background:var(--primary);color:#fff;}
 .btn-config.primary:hover{background:var(--primary-hover);}

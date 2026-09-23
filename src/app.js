@@ -12,7 +12,7 @@ import { initPalette } from "./ui/palette.js";
 import { initModals } from "./ui/modals.js";
 import { initPoupanca } from "./ui/poupanca.js";
 import { initManutencao } from "./ui/manutencao.js";
-import { isAutenticado, getPerfil, login, signup, logout } from "./authClient.js";
+import { isAutenticado, getPerfil, login, signup, logout, isSuperAdmin } from "./authClient.js";
 import { aoExpirarSessao } from "./db.js";
 import { t, aplicarTraducoes, IDIOMAS, DEFAULT_IDIOMA } from "./i18n.js";
 
@@ -27,7 +27,7 @@ const ICON_ELEMENT_MAP = {
   alertIcon: "alertTriangle", trashIcon2: "trash", boltIcon: "bolt", logoutIcon: "logout",
   poupancaIcon1: "bolt", chartIcon2: "chart", boxesIcon2: "boxes", poupancaRefreshIcon: "refresh", poupancaPdfIcon: "download",
   manutIcon1: "gear", manutIcon2: "checkCircle", manutIcon3: "download", manutIcon4: "chart",
-  idiomaIcon1: "globe"
+  idiomaIcon1: "globe", painelAdminIcon: "crown"
 };
 function preencherIconesEstaticos() {
   Object.entries(ICON_ELEMENT_MAP).forEach(([id, name]) => {
@@ -54,6 +54,7 @@ const viewToggle = document.getElementById("viewToggle");
 const btnRefresh = document.getElementById("btnRefresh");
 const btnNovoServico = document.getElementById("btnNovoServico");
 const btnAbrirConfig = document.getElementById("btnAbrirConfig");
+const btnPainelAdmin = document.getElementById("btnPainelAdmin");
 const contentRoot = document.getElementById("contentRoot");
 const toastStack = document.getElementById("toastStack");
 
@@ -340,6 +341,15 @@ btnLogout.addEventListener("click", () => {
   location.reload();
 });
 
+// Ponto 54 — Painel Developer/Super-Admin: o botão só aparece para a(s)
+// conta(s) cujo email está em SUPER_ADMIN_EMAILS (ver _lib/auth.js). A
+// própria página do painel volta a verificar isto junto do servidor —
+// isto aqui é só para não mostrar o botão a quem não vai poder usá-lo.
+if (btnPainelAdmin) {
+  if (isSuperAdmin()) btnPainelAdmin.hidden = false;
+  btnPainelAdmin.addEventListener("click", () => { location.href = "modulos/admin-central.html"; });
+}
+
 // se o servidor recusar o token (expirado/inválido) a meio da sessão, volta ao ecrã de entrada
 aoExpirarSessao(() => {
   bus.emit("toast:show", { type: "err", msg: t("toast.sessao_expirada", store.getState().idioma || DEFAULT_IDIOMA) });
@@ -382,6 +392,15 @@ if (isAutenticado()) {
   loginGate.hidden = false;
   appRoot.hidden = true;
 }
+
+// Ponto 52 — sinal de "app pronta" para o fallback de arranque definido em
+// index.html: confirma que este módulo (e todos os que importa) carregou e
+// executou até ao fim sem exceções. Não espera pelo carregamento assíncrono
+// dos dados (initRemote/actions.iniciar) — esses erros já têm o seu próprio
+// tratamento (try/catch + toast em arrancarCentral()); este sinal cobre
+// apenas o caso "ficheiro em falta / script partido", que antes deixava um
+// ecrã em branco sem qualquer pista.
+if (typeof window !== "undefined") window.__centralAppReady = true;
 
 /* ---------- sincronização entre computadores -----------
    A app grava sempre no servidor partilhado (Netlify Blobs), mas outros

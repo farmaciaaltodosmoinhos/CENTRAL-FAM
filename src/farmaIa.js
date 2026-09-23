@@ -454,8 +454,14 @@ function respostaOportunidades(contexto) {
   return `Há ${oportunidades.length} oportunidade(s) de automação identificada(s). A mais frequente é "${top.nome}", repetida ${top.totalOcorrencias}× no período — consulte a aba "Oportunidades" para o detalhe completo.`;
 }
 
-function respostaAjuda() {
-  return "Sou a FARMA IA: respondo a perguntas sobre o estado da farmácia (validades, utentes, pedidos AUE, manipulados, stocks errados, poupança de tempo, cópias de segurança) e mostro alertas e oportunidades de automação. " + PERGUNTA_EXEMPLO;
+/** `contexto.nomeAssistente` (opcional, ponto 46) — nome personalizado que a
+ * farmácia escolheu para a assistente (ver `config.farmaNomeAssistente` em
+ * modulos/farma-ia.html); "FARMA" continua a ser o valor por omissão. Só
+ * muda como a FARMA se apresenta nesta resposta — nunca o id do módulo nem
+ * o motor por trás dela. */
+function respostaAjuda(contexto) {
+  const nome = (contexto && contexto.nomeAssistente) || "FARMA IA";
+  return `Sou a ${nome}: respondo a perguntas sobre o estado da farmácia (validades, utentes, pedidos AUE, manipulados, stocks errados, poupança de tempo, cópias de segurança) e mostro alertas e oportunidades de automação. ` + PERGUNTA_EXEMPLO;
 }
 
 const PERGUNTA_EXEMPLO = 'Pode perguntar, por exemplo: "quantos utentes tenho no PIM?", "há medicamentos perto da validade?", ' +
@@ -493,7 +499,7 @@ const INTENTS = [
   { id: "poupanca", grupos: [["poupanca", "poupei", "poupou", "economizei", "economizado", "tempo ganho", "roi", "retorno"]], responder: (estado, contexto) => respostaPoupanca(estado, contexto) },
   { id: "backup", grupos: [["backup", "backups", "copia de seguranca", "copias de seguranca", "salvaguarda"]], responder: (estado, contexto, alertas) => respostaBackup(alertas) },
   { id: "oportunidades", grupos: [["oportunidade", "oportunidades", "automacao", "automatizar", "atalho", "atalhos"]], responder: (estado, contexto) => respostaOportunidades(contexto) },
-  { id: "ajuda", grupos: [["ajuda", "ajudar", "como funciona", "o que fazes", "o que sabes", "quem es"]], responder: () => respostaAjuda() }
+  { id: "ajuda", grupos: [["ajuda", "ajudar", "como funciona", "o que fazes", "o que sabes", "quem es"]], responder: (estado, contexto) => respostaAjuda(contexto) }
 ];
 
 /** Limiares da rede neuronal (ponto 42, fase 2) — calibrados empiricamente

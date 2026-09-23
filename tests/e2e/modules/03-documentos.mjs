@@ -477,5 +477,78 @@ export async function run(browser) {
   });
   ok('Documentos/Biblioteca: eliminar o livro remove também os seus documentos no servidor (cascata)', !!cascataPersistida);
 
+  // ---------- 22. Bolachas — regressão da impressão de UMA bolacha (bug real, ver arquitetura-decisoes.md) ----------
+  // Só o posicionamento por texto (sem arrastar/largar, ver nota no topo do ficheiro) — suficiente para
+  // confirmar que a camada de texto clonada para impressão mantém "position:absolute", que é o que o bug
+  // real partia: cloneCanvasForPrint() removia a classe "layer-el" das camadas antes de imprimir, e essa
+  // classe é a única fonte do "position:absolute" que as coloca nas coordenadas xPct/yPct escolhidas — sem
+  // ela, o texto saía impresso fora do sítio (em fluxo normal), mesmo continuando correto no ecrã.
+  await page.click('.mc-bb-item:has-text("Bolachas")');
+  await page.waitForTimeout(300);
+  await page.fill('.bolacha-textbox-row textarea', 'Farmácia QA\nPromoção');
+  await page.waitForTimeout(150);
+  await page.evaluate(() => { window.print = () => {}; }); // evita abrir o diálogo real de impressão do browser
+  await page.click('button:has-text("Imprimir esta bolacha")');
+  await page.waitForTimeout(200);
+  const posicaoImpressaoBolacha = await page.evaluate(() => {
+    const holder = document.getElementById('bolachaSinglePrintHolder');
+    const texto = holder?.querySelector('[data-text-layer-id]');
+    if (!texto) return null;
+    const cs = getComputedStyle(texto);
+    return { position: cs.position, temClasseLayerEl: texto.classList.contains('layer-el') };
+  });
+  ok('Documentos/Bolachas: "Imprimir esta bolacha" mantém o texto com position:absolute (não sai do sítio no papel)',
+    posicaoImpressaoBolacha?.position === 'absolute' && posicaoImpressaoBolacha?.temClasseLayerEl === true,
+    JSON.stringify(posicaoImpressaoBolacha));
+
+  // ---------- 23. Bolachas — várias caixas de texto, cada uma com tamanho/cor independentes (pedido do Ivo) ----------
+  const caixasIniciais = await page.locator('.bolacha-textbox-row').count();
+  ok('Documentos/Bolachas: começa com 1 caixa de texto (compatível com bolachas já existentes)', caixasIniciais === 1, `caixas=${caixasIniciais}`);
+
+  await page.click('button:has-text("Adicionar caixa de texto")');
+  await page.waitForTimeout(200);
+  const caixasDepoisDeAdicionar = await page.locator('.bolacha-textbox-row').count();
+  ok('Documentos/Bolachas: "Adicionar caixa de texto" cria uma segunda caixa independente', caixasDepoisDeAdicionar === 2, `caixas=${caixasDepoisDeAdicionar}`);
+
+  const segundaCaixa = page.locator('.bolacha-textbox-row').nth(1);
+  await segundaCaixa.locator('textarea').fill('Segunda caixa');
+  await segundaCaixa.locator('input[type="text"]').fill('30'); // tamanho de letra
+  await segundaCaixa.locator('input[type="color"]').fill('#ff0000');
+  await page.waitForTimeout(200);
+
+  const estiloCaixas = await page.evaluate(() => {
+    const els = Array.from(document.querySelectorAll('#bolachaCanvas [data-text-layer-id]'));
+    return els.map(el => {
+      const inner = el.querySelector('.layer-text-inner');
+      return { texto: inner.textContent, fontSize: inner.style.fontSize, cor: inner.style.color };
+    });
+  });
+  ok('Documentos/Bolachas: cada caixa de texto mantém o seu próprio texto/tamanho/cor na pré-visualização (independentes uma da outra)',
+    estiloCaixas.length === 2
+      && estiloCaixas[0].texto.includes('Farmácia QA') && estiloCaixas[0].fontSize === '13px'
+      && estiloCaixas[1].texto === 'Segunda caixa' && estiloCaixas[1].fontSize === '30px' && /255, 0, 0|#ff0000/i.test(estiloCaixas[1].cor),
+    JSON.stringify(estiloCaixas));
+
+  // a impressão de UMA bolacha (mesmo caminho do teste 22) tem de imprimir as DUAS caixas, cada uma com o seu estilo
+  await page.click('button:has-text("Imprimir esta bolacha")');
+  await page.waitForTimeout(200);
+  const impressasComDuasCaixas = await page.evaluate(() => {
+    const holder = document.getElementById('bolachaSinglePrintHolder');
+    return Array.from(holder?.querySelectorAll('[data-text-layer-id]') || []).map(el => {
+      const inner = el.querySelector('.layer-text-inner');
+      return { position: getComputedStyle(el).position, fontSize: inner.style.fontSize };
+    });
+  });
+  ok('Documentos/Bolachas: "Imprimir esta bolacha" imprime as 2 caixas, cada uma com position:absolute e o seu tamanho próprio',
+    impressasComDuasCaixas.length === 2 && impressasComDuasCaixas.every(c => c.position === 'absolute')
+      && impressasComDuasCaixas.some(c => c.fontSize === '30px'),
+    JSON.stringify(impressasComDuasCaixas));
+
+  // remover uma caixa
+  await page.locator('.bolacha-textbox-row').nth(1).locator('.bolacha-textbox-row-head a').click();
+  await page.waitForTimeout(200);
+  const caixasDepoisDeRemover = await page.locator('.bolacha-textbox-row').count();
+  ok('Documentos/Bolachas: "Remover" tira só essa caixa, mantendo a outra', caixasDepoisDeRemover === 1, `caixas=${caixasDepoisDeRemover}`);
+
   await ctx.close();
 }

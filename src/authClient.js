@@ -7,7 +7,7 @@
  * confia em nada que venha do pedido além disso (ver netlify/functions/_lib/auth.js).
  */
 const TOKEN_KEY = "central_saas_token";
-const PERFIL_KEY = "central_saas_perfil"; // { tenantId, email, nomeFarmacia } — só para mostrar na UI sem esperar por /api/auth/me
+const PERFIL_KEY = "central_saas_perfil"; // { tenantId, email, nomeFarmacia, isSuperAdmin } — só para mostrar na UI sem esperar por /api/auth/me
 
 export function getToken() {
   try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
@@ -17,10 +17,20 @@ export function getPerfil() {
   try { return JSON.parse(localStorage.getItem(PERFIL_KEY) || "null"); } catch { return null; }
 }
 
-function guardarSessao({ token, tenantId, email, nomeFarmacia }) {
+/**
+ * Ponto 54 — só um sinal para a UI (mostrar/esconder o botão do Painel
+ * Developer). Nunca é o que autoriza o acesso real: `/api/auth/admin-farmacias`
+ * volta a verificar a claim `isSuperAdmin` assinada dentro do token em si,
+ * por isso editar isto à mão no localStorage não dá acesso nenhum.
+ */
+export function isSuperAdmin() {
+  return !!getPerfil()?.isSuperAdmin;
+}
+
+function guardarSessao({ token, tenantId, email, nomeFarmacia, isSuperAdmin }) {
   try {
     localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(PERFIL_KEY, JSON.stringify({ tenantId, email, nomeFarmacia }));
+    localStorage.setItem(PERFIL_KEY, JSON.stringify({ tenantId, email, nomeFarmacia, isSuperAdmin: !!isSuperAdmin }));
   } catch { /* localStorage indisponível (modo privado, etc.) — a sessão só dura esta aba */ }
 }
 

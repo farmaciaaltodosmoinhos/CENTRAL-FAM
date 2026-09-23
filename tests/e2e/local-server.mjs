@@ -14,6 +14,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 process.env.AUTH_JWT_SECRET = 'segredo-de-teste-bem-comprido-para-o-servidor-local-0123456789';
+// Ponto 54 — conta fixa de teste e2e para o Painel Developer/Super-Admin.
+process.env.SUPER_ADMIN_EMAILS = 'admin-e2e@teste.pt';
 
 const PORT = Number(process.argv[2]) || 8888;
 const ROOT = path.resolve(process.argv[3] || '/home/claude/central-operacional-saas');
@@ -36,7 +38,12 @@ function getStore(name) {
     },
     async setJSON(key, value) { blobs.set(key, value); },
     async set(key, value) { blobs.set(key, value); },
-    async delete(key) { blobs.delete(key); }
+    async delete(key) { blobs.delete(key); },
+    // Ponto 54 — subconjunto mínimo do `.list()` real do Netlify Blobs.
+    async list(opts) {
+      const prefix = (opts && opts.prefix) || "";
+      return { blobs: [...blobs.keys()].filter(k => k.startsWith(prefix)).map(key => ({ key })) };
+    }
   };
 }
 

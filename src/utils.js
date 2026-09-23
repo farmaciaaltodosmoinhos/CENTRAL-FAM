@@ -87,6 +87,49 @@ export function shade(hex, percent) {
   return `#${[r, g, b].map(v => v.toString(16).padStart(2, "0")).join("")}`;
 }
 
+/**
+ * Valida um NIF português (9 dígitos + dígito de controlo, algoritmo oficial
+ * módulo 11). Aceita o valor com espaços/pontos (ex. "123 456 789") — só
+ * confirma o formato depois de os remover. Não valida a entidade/prefixo
+ * (1/2/3 pessoas singulares, 5 pessoas coletivas, etc.), só o dígito de
+ * controlo, que já é suficiente para apanhar o erro mais comum: um dígito
+ * trocado ou em falta ao copiar do cartão de cidadão.
+ */
+export function validarNif(nif) {
+  const s = String(nif || "").replace(/[\s.]/g, "");
+  if (!/^\d{9}$/.test(s)) return false;
+  const digitos = s.split("").map(Number);
+  const soma = digitos.slice(0, 8).reduce((acc, d, i) => acc + d * (9 - i), 0);
+  const resto = soma % 11;
+  const controlo = resto < 2 ? 0 : 11 - resto;
+  return controlo === digitos[8];
+}
+
+/**
+ * Validação de formato de email — deliberadamente permissiva (não tenta
+ * cobrir todo o RFC 5322, só apanhar o erro real mais comum: falta do "@",
+ * do domínio, ou espaços colados por engano ao copiar/colar).
+ */
+export function validarEmail(email) {
+  const s = String(email || "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
+/**
+ * Valida um número de telefone português: 9 dígitos depois de remover
+ * espaços/traços e um eventual indicativo (+351 ou 00351), a começar por
+ * 2, 3, 6, 7, 8 ou 9 — os únicos primeiros dígitos usados no plano de
+ * numeração português (nunca 0, 1, 4 ou 5). Não distingue telemóvel de
+ * fixo/número especial (91x/92x/93x/96x são telemóvel; 2xx são fixo; 70x,
+ * 76x, 80x são serviços especiais) — só apanha o erro real mais comum: um
+ * dígito a mais/a menos ou trocado ao copiar/escrever.
+ */
+export function validarTelefone(telefone) {
+  let s = String(telefone || "").replace(/[\s.-]/g, "");
+  s = s.replace(/^(\+351|00351)/, "");
+  return /^[236789]\d{8}$/.test(s);
+}
+
 export function placeholderImg(nome) {
   const letra = (nome || "?").trim().charAt(0).toUpperCase();
   return `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="85" height="85"><rect width="100%" height="100%" rx="43" fill="%23eef3ea"/><text x="50%" y="56%" font-size="34" text-anchor="middle" fill="%232b7a4b" font-family="sans-serif">${letra}</text></svg>`)}`;

@@ -267,6 +267,11 @@
   .layer-toolbar button:hover{background:var(--line);}
   .field-row{display:flex;gap:10px;}
   .field-row > div{flex:1;}
+  .bolacha-textbox-row{border:1.5px solid var(--line);border-radius:10px;padding:10px;margin-bottom:9px;background:#fff;}
+  .bolacha-textbox-row-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .bolacha-textbox-row-head b{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.3px;}
+  .bolacha-textbox-row-head a{color:var(--red);font-size:11.5px;font-weight:600;cursor:pointer;}
+  .bolacha-textbox-row textarea{min-height:52px;}
   .swatch-sm{width:26px;height:26px;border-radius:7px;cursor:pointer;border:2px solid transparent;display:inline-block;}
   .swatch-sm.sel{border-color:var(--ink);}
 
@@ -798,12 +803,19 @@ function aplicarBrandingFarmacia(){
   if(psLogo) psLogo.src = FARMACIA_LOGO_SRC;
 }
 
+// Ponto 50 (bloqueio otimista): revisão do estado devolvida pelo servidor no
+// cabeçalho X-Estado-Rev (nunca no corpo — ver netlify/functions/data.js).
+// Reenviada em cada PUT: se outro dispositivo/separador gravou entretanto,
+// o servidor recusa com 409 em vez de deixar esta gravação apagar em
+// silêncio o que esse outro gravou.
+let ESTADO_REV = null;
 async function fetchEstado(){
   const token = getToken();
   if(!token){ voltarACentral(); throw new Error('sem sessão'); }
   const res = await fetch('/api/data', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
   if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
   if(!res.ok) throw new Error('HTTP ' + res.status);
+  ESTADO_REV = res.headers.get('X-Estado-Rev');
   const dados = await res.json();
   ESTADO_BRANDING_CACHE = dados;
   aplicarBrandingFarmacia();
@@ -814,19 +826,26 @@ async function fetchEstado(){
  *  tudo o resto (outras chaves de documentos, e os campos de outros
  *  módulos) — o mesmo padrão usado em modulos/manipulados.html. */
 async function gravarDocumentos(key, value){
-  const estadoAtual = await fetchEstado();
   const token = getToken();
-  const novoDocumentos = { ...(estadoAtual.documentos || {}), [key]: value };
-  // Logótipo omitido de propósito (ver carregarLogoAsset acima).
-  const configSemLogo = { ...(estadoAtual.config || {}) };
-  delete configSemLogo.logo;
-  const res = await fetch('/api/data', {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...estadoAtual, config: configSemLogo, documentos: novoDocumentos })
-  });
-  if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
-  if(!res.ok) throw new Error('HTTP ' + res.status);
+  for(let tentativa=1; tentativa<=3; tentativa++){
+    const estadoAtual = await fetchEstado();
+    const novoDocumentos = { ...(estadoAtual.documentos || {}), [key]: value };
+    // Logótipo omitido de propósito (ver carregarLogoAsset acima).
+    const configSemLogo = { ...(estadoAtual.config || {}) };
+    delete configSemLogo.logo;
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    if(ESTADO_REV != null) headers['X-Estado-Rev'] = ESTADO_REV;
+    const res = await fetch('/api/data', {
+      method: 'PUT', headers,
+      body: JSON.stringify({ ...estadoAtual, config: configSemLogo, documentos: novoDocumentos })
+    });
+    if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
+    if(res.status === 409){ continue; } // outro dispositivo/separador gravou entretanto — relê (próxima iteração) e tenta de novo
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    ESTADO_REV = res.headers.get('X-Estado-Rev') || ESTADO_REV;
+    return;
+  }
+  throw new Error('Não foi possível gravar: conflito de gravação persistente. Tente novamente.');
 }
 
 /* ===================== ASSETS ===================== */
@@ -936,8 +955,23 @@ function cloneCanvasForPrint(canvasEl, holderId){
   holder.innerHTML = '';
   const clone = canvasEl.cloneNode(true);
   clone.removeAttribute('id');
-  clone.querySelectorAll('.layer-handle').forEach(h=>h.remove());
-  clone.querySelectorAll('.layer-el').forEach(l=>{ l.classList.remove('layer-el'); l.style.cursor=''; l.style.outline='none'; });
+  clone.querySelectorAll('.layer-handle, .layer-del').forEach(h=>h.remove());
+  // BUG CORRIGIDO (impressão de uma única bolacha saía com o texto/imagens
+  // fora do sítio, "achatados" na página): esta função removia a classe
+  // "layer-el" de cada camada antes de imprimir, para tirar o cursor/o
+  // contorno tracejado do modo de edição — mas ".layer-el{position:absolute;
+  // ...}" é também a única regra que posiciona o texto/imagem nas
+  // coordenadas xPct/yPct/wPct/hPct escolhidas (o style em linha só tem
+  // left/top/width/height em percentagem, nunca "position"), e ".layer-el
+  // img"/".layer-el .layer-text-inner" são as únicas regras que forçam a
+  // imagem/texto a preencher a sua caixa. Sem a classe, o elemento passa a
+  // "position:static" e sai do posicionamento absoluto: o texto e as
+  // imagens deixavam de aparecer sobre a bolacha (saíam em fluxo normal,
+  // por baixo/fora da forma) mal se carregasse em "Imprimir esta bolacha" —
+  // só a "Imprimir folha completa" (que nunca usa esta função, monta o HTML
+  // com position:absolute já embutido) continuava correta. Corrigido
+  // mantendo a classe "layer-el" e só anulando o que era mesmo só de edição.
+  clone.querySelectorAll('.layer-el').forEach(l=>{ l.classList.remove('selected'); l.style.cursor='default'; l.style.outline='none'; l.style.touchAction=''; });
   holder.appendChild(clone);
 }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -2228,12 +2262,27 @@ function newBolachaState(){
   return {
     shape:'circular', widthMm:80, heightMm:80, bgType:'solid',
     bgColor1:getLastBolachaColor(), bgColor2:'#4f9c72', borderColor:'#1f543e', borderWidth:2, shadow:true,
-    textLayer:{ text:nomeFarmaciaAtual(), xPct:12, yPct:58, wPct:76, hPct:30, fontSize:13, color:'#ffffff' },
+    textLayers:[{ id:uid(), text:nomeFarmaciaAtual(), xPct:12, yPct:58, wPct:76, hPct:30, fontSize:13, color:'#ffffff' }],
     imageLayers:[]
   };
 }
+/* Compatibilidade com bolachas guardadas antes desta peça (uma única caixa
+   de texto, em `state.textLayer`, singular): converte para o novo formato
+   `state.textLayers` (array, várias caixas independentes) na primeira vez
+   que essa bolacha antiga for lida — histórico e fila de impressão podem
+   ter entradas nos dois formatos, e ambos têm de continuar a abrir bem. */
+function normalizeBolachaState(state){
+  if(!state) return state;
+  if(!Array.isArray(state.textLayers)){
+    const legacy = state.textLayer || { text:nomeFarmaciaAtual(), xPct:12, yPct:58, wPct:76, hPct:30, fontSize:13, color:'#ffffff' };
+    state.textLayers = [Object.assign({ id: uid() }, legacy)];
+  }
+  delete state.textLayer;
+  if(!Array.isArray(state.imageLayers)) state.imageLayers = [];
+  return state;
+}
 let bolachaState = newBolachaState();
-let bolachaQueue = loadJSON(BOLACHA_QUEUE_KEY, []);
+let bolachaQueue = loadJSON(BOLACHA_QUEUE_KEY, []).map(normalizeBolachaState);
 
 function initBolachaModule(){
   renderBolachaForm();
@@ -2254,8 +2303,25 @@ function setBolachaLight(key, val){
   if(key === 'bgColor1'){ setLastBolachaColor(val); }
   renderBolachaCanvas();
 }
-function setBolachaTextLight(key, val){
-  bolachaState.textLayer[key] = val;
+function setBolachaTextLight(id, key, val){
+  const layer = bolachaState.textLayers.find(t=>t.id===id);
+  if(!layer) return;
+  layer[key] = val;
+  renderBolachaCanvas();
+}
+function addBolachaTextBox(){
+  const n = bolachaState.textLayers.length;
+  // desloca ligeiramente cada caixa nova para não nascer exatamente em cima
+  // da anterior, sem sair da área visível da bolacha.
+  bolachaState.textLayers.push({
+    id: uid(), text:'Texto', xPct:10+(n*6)%50, yPct:10+(n*8)%50, wPct:70, hPct:18, fontSize:13, color:'#ffffff'
+  });
+  renderBolachaForm();
+  renderBolachaCanvas();
+}
+function removeBolachaTextBox(id){
+  bolachaState.textLayers = bolachaState.textLayers.filter(t=>t.id!==id);
+  renderBolachaForm();
   renderBolachaCanvas();
 }
 async function handleBolachaImageUpload(e){
@@ -2304,12 +2370,20 @@ function renderBolachaForm(){
       </div>
     </div>
     <div class="field-block">
-      <label>Texto (arraste na pré-visualização para posicionar/dimensionar)</label>
-      <textarea oninput="setBolachaTextLight('text', this.value)">${escapeHtml(s.textLayer.text)}</textarea>
-    </div>
-    <div class="field-block field-row">
-      <div><label>Tamanho do texto</label><input type="text" value="${s.textLayer.fontSize}" oninput="setBolachaTextLight('fontSize', parseFloat(this.value)||13)"></div>
-      <div><label>Cor do texto</label><input type="color" value="${s.textLayer.color}" oninput="setBolachaTextLight('color', this.value)"></div>
+      <label>Caixas de texto (arraste cada uma na pré-visualização para posicionar/dimensionar — tamanho e cor são independentes em cada caixa)</label>
+      ${s.textLayers.map((t,i)=>`
+        <div class="bolacha-textbox-row">
+          <div class="bolacha-textbox-row-head">
+            <b>Caixa ${i+1}</b>
+            <a onclick="removeBolachaTextBox('${t.id}')">🗑 Remover</a>
+          </div>
+          <textarea oninput="setBolachaTextLight('${t.id}','text', this.value)">${escapeHtml(t.text)}</textarea>
+          <div class="field-row" style="margin-top:6px;">
+            <div><label>Tamanho do texto</label><input type="text" value="${t.fontSize}" oninput="setBolachaTextLight('${t.id}','fontSize', parseFloat(this.value)||13)"></div>
+            <div><label>Cor do texto</label><input type="color" value="${t.color}" oninput="setBolachaTextLight('${t.id}','color', this.value)"></div>
+          </div>
+        </div>`).join('')}
+      <button type="button" class="btn-secondary" onclick="addBolachaTextBox()" style="width:100%;">➕ Adicionar caixa de texto</button>
     </div>
     <div class="field-block field-row">
       <div><label>Cor do contorno</label><input type="color" value="${s.borderColor}" oninput="setBolachaLight('borderColor', this.value)"></div>
@@ -2347,11 +2421,13 @@ function renderBolachaCanvas(){
       <div class="layer-del no-print" data-del-image="${img.id}">✕</div>
     </div>`;
   });
-  const t = s.textLayer;
-  html += `<div class="layer-el" id="bolachaTextLayerEl" style="left:${t.xPct}%;top:${t.yPct}%;width:${t.wPct}%;height:${t.hPct}%;">
-    <div class="layer-text-inner" style="display:flex;align-items:center;justify-content:center;text-align:center;font-family:'Manrope',sans-serif;font-weight:800;color:${t.color};font-size:${t.fontSize}px;white-space:pre-line;line-height:1.15;">${escapeHtml(t.text)}</div>
-    <div class="layer-handle"></div>
-  </div>`;
+  s.textLayers.forEach(t=>{
+    html += `<div class="layer-el" data-text-layer-id="${t.id}" style="left:${t.xPct}%;top:${t.yPct}%;width:${t.wPct}%;height:${t.hPct}%;">
+      <div class="layer-text-inner" style="display:flex;align-items:center;justify-content:center;text-align:center;font-family:'Manrope',sans-serif;font-weight:800;color:${t.color};font-size:${t.fontSize}px;white-space:pre-line;line-height:1.15;">${escapeHtml(t.text)}</div>
+      <div class="layer-handle"></div>
+      <div class="layer-del no-print" data-del-text="${t.id}">✕</div>
+    </div>`;
+  });
 
   const container = document.getElementById('bolachaCanvas');
   container.style.cssText = `width:${s.widthMm}mm;height:${s.heightMm}mm;${shadow}`;
@@ -2361,12 +2437,18 @@ function renderBolachaCanvas(){
     const el = container.querySelector(`[data-layer-id="${img.id}"]`);
     if(el) makeLayerInteractive(el, img, container, ()=>{});
   });
-  const textEl = document.getElementById('bolachaTextLayerEl');
-  if(textEl) makeLayerInteractive(textEl, t, container, ()=>{}, {minSize:8});
+  s.textLayers.forEach(t=>{
+    const el = container.querySelector(`[data-text-layer-id="${t.id}"]`);
+    if(el) makeLayerInteractive(el, t, container, ()=>{}, {minSize:8});
+  });
 
   container.querySelectorAll('[data-del-image]').forEach(btn=>{
     btn.addEventListener('pointerdown', e=>e.stopPropagation());
     btn.addEventListener('click', e=>{ e.stopPropagation(); removeBolachaImage(btn.dataset.delImage); });
+  });
+  container.querySelectorAll('[data-del-text]').forEach(btn=>{
+    btn.addEventListener('pointerdown', e=>e.stopPropagation());
+    btn.addEventListener('click', e=>{ e.stopPropagation(); removeBolachaTextBox(btn.dataset.delText); });
   });
 }
 function attachBolachaCanvasResize(){
@@ -2409,7 +2491,7 @@ function loadBolachaFromHistory(id){
   const hist = loadJSON(BOLACHAS_KEY, []);
   const item = hist.find(h=>h.id===id);
   if(!item) return;
-  bolachaState = JSON.parse(JSON.stringify(item.state));
+  bolachaState = normalizeBolachaState(JSON.parse(JSON.stringify(item.state)));
   renderBolachaForm();
   renderBolachaCanvas();
 }
@@ -2486,8 +2568,9 @@ function printBolachaSheet(){
     st.imageLayers.forEach(img=>{
       inner += `<div style="position:absolute;left:${img.xPct}%;top:${img.yPct}%;width:${img.wPct}%;height:${img.hPct}%;"><img src="${img.src}" style="width:100%;height:100%;object-fit:contain;"></div>`;
     });
-    const t = st.textLayer;
-    inner += `<div style="position:absolute;left:${t.xPct}%;top:${t.yPct}%;width:${t.wPct}%;height:${t.hPct}%;display:flex;align-items:center;justify-content:center;text-align:center;font-family:'Manrope',sans-serif;font-weight:800;color:${t.color};font-size:${t.fontSize}px;white-space:pre-line;line-height:1.15;">${escapeHtml(t.text)}</div>`;
+    (st.textLayers || []).forEach(t=>{
+      inner += `<div style="position:absolute;left:${t.xPct}%;top:${t.yPct}%;width:${t.wPct}%;height:${t.hPct}%;display:flex;align-items:center;justify-content:center;text-align:center;font-family:'Manrope',sans-serif;font-weight:800;color:${t.color};font-size:${t.fontSize}px;white-space:pre-line;line-height:1.15;">${escapeHtml(t.text)}</div>`;
+    });
     item.innerHTML = inner;
     grid.appendChild(item);
     bolachaState = savedState;
@@ -3948,6 +4031,7 @@ hydrateFromCloud();
 
 /* Exposição global — necessária p/ handlers inline (onclick="...") em módulos ES,
    já que declarações de topo de um módulo não ficam automaticamente em window. */
+window.addBolachaTextBox = addBolachaTextBox;
 window.addBolachaToQueue = addBolachaToQueue;
 window.addDbMedToList = addDbMedToList;
 window.addExtraSlot = addExtraSlot;
@@ -4032,6 +4116,7 @@ window.pullMedsFromPim = pullMedsFromPim;
 window.removeBolachaImage = removeBolachaImage;
 window.removeExtraSlot = removeExtraSlot;
 window.removeFromBolachaQueue = removeFromBolachaQueue;
+window.removeBolachaTextBox = removeBolachaTextBox;
 window.removeMedRow = removeMedRow;
 window.removeMlItem = removeMlItem;
 window.renderBiblioBookDetail = renderBiblioBookDetail;

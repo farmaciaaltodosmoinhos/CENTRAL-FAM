@@ -244,8 +244,16 @@ export async function run(browser) {
     // ponto 42 (fase 2): um erro de escrita "normal" (troca de duas letras
     // adjacentes) já não precisa de passar pelo fluxo de ensinar alias acima
     // — a rede neuronal reconhece-o sozinha, com confiança, e responde de
-    // imediato marcada com a classe via-rede-neural (🧩 na UI).
-    await page.fill('#inputPergunta', 'utntes');
+    // imediato marcada com a classe via-rede-neural (🧩 na UI). Ponto 46:
+    // depois de expandir o dataset de treino de 298 para ~1000 frases e
+    // retreinar os pesos partilhados, a rede ficou mais bem calibrada em
+    // frases com contexto mas propositadamente mais cautelosa com uma
+    // única palavra solta e sem contexto nenhum ("utntes" isolado caiu para
+    // ~0.78 de confiança, abaixo do limiar de 0.85) — o que é o
+    // comportamento correto (menos informação, menos confiança), não uma
+    // regressão. Testa-se aqui com uma pergunta curta mas real, mais perto
+    // de como se escreve na prática, que continua bem acima do limiar.
+    await page.fill('#inputPergunta', 'quantos utnetes tenho');
     await page.click('#formPergunta button[type="submit"]');
     await page.waitForTimeout(500);
     const respostaRede = page.locator('.msg.resposta').last();

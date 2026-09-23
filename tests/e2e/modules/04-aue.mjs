@@ -82,12 +82,51 @@ export async function run(browser) {
   await page.click('.modal-foot button:has-text("Cancelar")');
   await page.waitForTimeout(150);
 
+  // ---------- 1b. Ponto 49: NIF/Email com formato inválido bloqueiam a gravação (antes só se confirmava que não estavam vazios) ----------
+  await page.click('button:has-text("+ Novo pedido AUE")');
+  await preencherPedido({
+    f_operador: 'Operador QA', f_medicamento: 'Canabidiol 100mg/ml solução oral',
+    f_nome: 'Utente Formato Inválido', f_nif: '123456780', f_telefone: '910000099', f_email: 'utenteformatoinvalido@qa.pt',
+    f_medico: 'Dr. QA Formato'
+  });
+  await page.click('.modal-foot button:has-text("Guardar alterações")');
+  await page.waitForTimeout(150);
+  ok('AUE (ponto 49): NIF com dígito de controlo errado bloqueia a gravação (modal continua aberto)',
+    await page.locator('#overlay.open').count() === 1);
+  ok('AUE (ponto 49): o campo NIF ganha a classe de erro visual com um NIF inválido',
+    await page.locator('#f_nif.field-error').count() === 1);
+
+  await page.fill('#f_nif', '123456789'); // agora válido
+  await page.fill('#f_email', 'utenteformatoinvalidoarroba'); // sem "@" nem domínio
+  await page.click('.modal-foot button:has-text("Guardar alterações")');
+  await page.waitForTimeout(150);
+  ok('AUE (ponto 49): email sem "@"/domínio bloqueia a gravação (modal continua aberto)',
+    await page.locator('#overlay.open').count() === 1);
+  ok('AUE (ponto 49): o campo Email ganha a classe de erro visual com um email inválido',
+    await page.locator('#f_email.field-error').count() === 1);
+  ok('AUE (ponto 49): com o NIF já corrigido, o campo NIF deixa de ter a classe de erro',
+    await page.locator('#f_nif.field-error').count() === 0);
+
+  await page.fill('#f_email', 'utenteformatoinvalido@qa.pt'); // agora válido
+  await page.fill('#f_telefone', '512345678'); // formato português inválido (não pode começar por 5)
+  await page.click('.modal-foot button:has-text("Guardar alterações")');
+  await page.waitForTimeout(150);
+  ok('AUE (ponto 52): telefone com formato português inválido bloqueia a gravação (modal continua aberto)',
+    await page.locator('#overlay.open').count() === 1);
+  ok('AUE (ponto 52): o campo Telefone ganha a classe de erro visual com um telefone inválido',
+    await page.locator('#f_telefone.field-error').count() === 1);
+  ok('AUE (ponto 52): o email já corrigido não fica marcado como erro (só o telefone bloqueia agora)',
+    await page.locator('#f_email.field-error').count() === 0);
+
+  await page.click('.modal-foot button:has-text("Cancelar")');
+  await page.waitForTimeout(150);
+
   // ---------- 2. Criar pedido real, com os 3 documentos obrigatórios ----------
   const nomeP1 = 'Utente QA Um';
   await page.click('button:has-text("+ Novo pedido AUE")');
   await preencherPedido({
     f_operador: 'Operador QA', f_medicamento: 'Canabidiol 100mg/ml solução oral',
-    f_nome: nomeP1, f_nif: '111222333', f_telefone: '910000001', f_email: 'utente1@qa.pt',
+    f_nome: nomeP1, f_nif: '111222338', f_telefone: '910000001', f_email: 'utente1@qa.pt',
     f_medico: 'Dr. QA Um'
   });
   await page.setInputFiles('#doc_input_receita', { name: 'receita.pdf', mimeType: 'application/pdf', buffer: Buffer.from('receita-qa') });
@@ -125,7 +164,7 @@ export async function run(browser) {
   await page.click('button:has-text("+ Novo pedido AUE")');
   await preencherPedido({
     f_operador: 'Operador QA', f_medicamento: 'Outro medicamento QA',
-    f_nome: nomeP2, f_nif: '444555666', f_telefone: '910000002', f_email: 'utente2@qa.pt',
+    f_nome: nomeP2, f_nif: '444555668', f_telefone: '910000002', f_email: 'utente2@qa.pt',
     f_medico: 'Dr. QA Dois'
   });
   await page.click('.modal-foot button:has-text("Guardar alterações")');
@@ -214,7 +253,7 @@ export async function run(browser) {
   await page.click('button:has-text("+ Novo pedido AUE")');
   await preencherPedido({
     f_operador: 'Operador QA', f_medicamento: 'Medicamento Tombstone QA',
-    f_nome: nomeP3, f_nif: '777888999', f_telefone: '910000003', f_email: 'utente3@qa.pt',
+    f_nome: nomeP3, f_nif: '777888998', f_telefone: '910000003', f_email: 'utente3@qa.pt',
     f_medico: 'Dr. QA Três'
   });
   await page.click('.modal-foot button:has-text("Guardar alterações")');
@@ -274,7 +313,7 @@ export async function run(browser) {
   await page.click('button:has-text("+ Novo pedido AUE")');
   await preencherPedido({
     f_operador: 'Operador QA', f_medicamento: 'Canabidiol Template QA',
-    f_nome: nomeP4, f_nif: '199199777', f_telefone: '912333444', f_email: 'template-qa@qa.pt',
+    f_nome: nomeP4, f_nif: '199199779', f_telefone: '912333444', f_email: 'template-qa@qa.pt',
     f_medico: 'Dr. Template QA', f_receita: 'REC-TPL-QA'
   });
   await page.selectOption('#f_armazenista', 'Empifarma');
@@ -350,7 +389,7 @@ export async function run(browser) {
   await page.click('button:has-text("+ Novo pedido AUE")');
   await preencherPedido({
     f_operador: 'Operador QA Dois', f_medicamento: 'Epidiolex Template QA',
-    f_nome: nomeP5, f_nif: '199199888', f_telefone: '913444555', f_email: 'template2-qa@qa.pt',
+    f_nome: nomeP5, f_nif: '199199884', f_telefone: '913444555', f_email: 'template2-qa@qa.pt',
     f_medico: 'Dra. Template QA Dois', f_receita: 'REC-TPL-QA-2'
   });
   await page.selectOption('#f_armazenista', 'OCP');

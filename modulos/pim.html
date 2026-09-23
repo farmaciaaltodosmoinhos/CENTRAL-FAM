@@ -674,12 +674,19 @@ function aplicarBrandingFarmacia(){
   if(img) img.src = FARMACIA_LOGO_SRC;
 }
 
+// Ponto 50 (bloqueio otimista): revisão do estado devolvida pelo servidor no
+// cabeçalho X-Estado-Rev (nunca no corpo — ver netlify/functions/data.js).
+// Reenviada em cada PUT: se outro dispositivo/separador gravou entretanto,
+// o servidor recusa com 409 em vez de deixar esta gravação apagar em
+// silêncio o que esse outro gravou.
+let ESTADO_REV = null;
 async function fetchEstado(){
   const token = getToken();
   if(!token){ voltarACentral(); throw new Error('sem sessão'); }
   const res = await fetch('/api/data', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
   if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
   if(!res.ok) throw new Error('HTTP ' + res.status);
+  ESTADO_REV = res.headers.get('X-Estado-Rev');
   const dados = await res.json();
   ESTADO_BRANDING_CACHE = dados;
   aplicarBrandingFarmacia();
@@ -687,22 +694,29 @@ async function fetchEstado(){
 }
 
 async function gravarPim(key, value){
-  const estadoAtual = await fetchEstado();
   const token = getToken();
-  const novoPim = { ...(estadoAtual.pim || {}), [key]: value };
-  // O logótipo já não é gravado aqui (ver carregarLogoAsset acima) — omite-se
-  // de propósito do "config" reenviado, para que o servidor deixe de o
-  // guardar nesta fatia a partir desta gravação (sem precisar de nenhuma
-  // migração à parte: cada gravação de qualquer módulo vai "limpando-o").
-  const configSemLogo = { ...(estadoAtual.config || {}) };
-  delete configSemLogo.logo;
-  const res = await fetch('/api/data', {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...estadoAtual, config: configSemLogo, pim: novoPim })
-  });
-  if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
-  if(!res.ok) throw new Error('HTTP ' + res.status);
+  for(let tentativa=1; tentativa<=3; tentativa++){
+    const estadoAtual = await fetchEstado();
+    const novoPim = { ...(estadoAtual.pim || {}), [key]: value };
+    // O logótipo já não é gravado aqui (ver carregarLogoAsset acima) — omite-se
+    // de propósito do "config" reenviado, para que o servidor deixe de o
+    // guardar nesta fatia a partir desta gravação (sem precisar de nenhuma
+    // migração à parte: cada gravação de qualquer módulo vai "limpando-o").
+    const configSemLogo = { ...(estadoAtual.config || {}) };
+    delete configSemLogo.logo;
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    if(ESTADO_REV != null) headers['X-Estado-Rev'] = ESTADO_REV;
+    const res = await fetch('/api/data', {
+      method: 'PUT', headers,
+      body: JSON.stringify({ ...estadoAtual, config: configSemLogo, pim: novoPim })
+    });
+    if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
+    if(res.status === 409){ continue; } // outro dispositivo/separador gravou entretanto — relê (próxima iteração) e tenta de novo
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    ESTADO_REV = res.headers.get('X-Estado-Rev') || ESTADO_REV;
+    return;
+  }
+  throw new Error('Não foi possível gravar: conflito de gravação persistente. Tente novamente.');
 }
 
 /* ===================== PIM · Gestão de PIM ===================== */

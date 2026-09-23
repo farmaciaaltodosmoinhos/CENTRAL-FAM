@@ -12,6 +12,25 @@
  * Rota exposta: /api/data (ver `config.path` abaixo e o `netlify.toml`).
  *   GET  /api/data  -> devolve o estado atual desta farmácia em JSON
  *   PUT  /api/data  -> substitui o estado atual desta farmácia pelo corpo JSON enviado
+ *
+ * Ponto 50 (bloqueio otimista): cada gravação faz sempre um GET-modifica-PUT
+ * no cliente (ver `fetchEstado`/`gravarXxx` em cada módulo). Sem nenhum
+ * controlo de concorrência, dois separadores/dispositivos a gravar quase ao
+ * mesmo tempo podiam perder-se um ao outro: o 2º a gravar lê o estado ANTES
+ * da gravação do 1º, e ao gravar repõe esse instantâneo antigo por cima do
+ * que o 1º acabou de gravar — incluindo campos de módulos que nem sequer
+ * mexeu (o merge do PUT espalha sempre TODO o `estadoAtual` que o cliente
+ * leu, não só a fatia que alterou). Cada farmácia tem agora um número de
+ * revisão (`estado:<tenantId>:rev`, um inteiro simples, numa chave à parte
+ * do estado em si — nunca faz parte do JSON devolvido por GET, para não
+ * alterar a forma do estado que os módulos já conhecem). O GET devolve-o no
+ * cabeçalho `X-Estado-Rev`; um PUT pode (deve) devolver esse mesmo valor no
+ * cabeçalho `X-Estado-Rev` do pedido — só grava e avança a revisão se ainda
+ * coincidir com a revisão atual no servidor; caso contrário devolve 409 sem
+ * escrever nada, para o cliente voltar a ler o estado fresco e tentar de
+ * novo. Um PUT sem esse cabeçalho (compatibilidade com um cliente antigo,
+ * ainda não atualizado) continua a funcionar exatamente como antes — sem
+ * bloqueio nenhum — para nunca partir um módulo esquecido nesta ronda.
  */
 import { getStore } from "@netlify/blobs";
 import { autenticarPedido } from "./_lib/auth.js";
@@ -24,10 +43,20 @@ const ESTADO_VAZIO = {
   config: {}
 };
 
-function jsonResponse(data, status = 200) {
+function revKey(tenantId) { return `estado:${tenantId}:rev`; }
+
+async function lerRev(store, tenantId) {
+  try {
+    const v = await store.get(revKey(tenantId), { type: "text" });
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  } catch (e) { return 0; }
+}
+
+function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extraHeaders }
   });
 }
 
@@ -56,7 +85,8 @@ export async function handleRequest(request, getStoreImpl) {
   if (request.method === "GET") {
     try {
       const estado = await store.get(blobKey, { type: "json" });
-      return jsonResponse(estado || ESTADO_VAZIO);
+      const rev = await lerRev(store, sessao.tenantId);
+      return jsonResponse(estado || ESTADO_VAZIO, 200, { "x-estado-rev": String(rev) });
     } catch (err) {
       return jsonResponse({ error: "Falha ao ler o estado.", detail: String(err) }, 500);
     }
@@ -75,6 +105,21 @@ export async function handleRequest(request, getStoreImpl) {
       return jsonResponse({ error: "Corpo inválido: esperado { servicos: [], categorias: [], config: {} }." }, 400);
     }
     try {
+      const revEsperada = request.headers.get("x-estado-rev");
+      const revAtual = await lerRev(store, sessao.tenantId);
+      // Ponto 50: só quando o cliente MANDA o cabeçalho é que há bloqueio —
+      // ver o comentário grande no topo do ficheiro sobre compatibilidade
+      // com um cliente ainda não atualizado.
+      if (revEsperada !== null && revEsperada !== "") {
+        const revEsperadaNum = parseInt(revEsperada, 10);
+        if (!Number.isFinite(revEsperadaNum) || revEsperadaNum !== revAtual) {
+          return jsonResponse(
+            { error: "Conflito de concorrência: outro dispositivo/separador gravou entretanto. Leia o estado mais recente e tente novamente.", rev: revAtual },
+            409,
+            { "x-estado-rev": String(revAtual) }
+          );
+        }
+      }
       // Faz merge com o estado atual em vez de o substituir por inteiro: cada
       // módulo (ex. Manipulados) grava só a fatia que conhece — sem isto, um
       // módulo que desconheça o campo de outro (ex. o painel principal a
@@ -82,8 +127,10 @@ export async function handleRequest(request, getStoreImpl) {
       // sempre esse campo a cada gravação sua.
       const atual = (await store.get(blobKey, { type: "json" })) || ESTADO_VAZIO;
       const payload = { ...atual, ...body, servicos: body.servicos, categorias: body.categorias, config: body.config || {} };
+      const revNova = revAtual + 1;
       await store.setJSON(blobKey, payload);
-      return jsonResponse({ ok: true });
+      await store.set(revKey(sessao.tenantId), String(revNova));
+      return jsonResponse({ ok: true, rev: revNova }, 200, { "x-estado-rev": String(revNova) });
     } catch (err) {
       return jsonResponse({ error: "Falha ao gravar o estado.", detail: String(err) }, 500);
     }

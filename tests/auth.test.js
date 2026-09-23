@@ -20,6 +20,11 @@ function reqMe(token) {
     method: "GET", headers: token ? { authorization: `Bearer ${token}` } : {}
   });
 }
+function reqAdminFarmacias(token) {
+  return new Request("https://site.netlify.app/api/auth/admin-farmacias", {
+    method: "GET", headers: token ? { authorization: `Bearer ${token}` } : {}
+  });
+}
 const ctx = (acao) => ({ params: { acao } });
 
 describe("signup", () => {
@@ -159,5 +164,66 @@ describe("me", () => {
     const adulterado = token.slice(0, -2) + "xx";
     const res = await handleRequest(reqMe(adulterado), ctx("me"), getStoreImpl);
     assert.equal(res.status, 401);
+  });
+});
+
+describe("Ponto 54 — Painel Developer/Super-Admin", () => {
+  test("uma conta normal não é super-admin (signup/login/me devolvem isSuperAdmin: false)", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    const s = await handleRequest(reqSignup({ nomeFarmacia: "F", email: "normal@teste.pt", password: "palavrapasse123" }), ctx("signup"), getStoreImpl);
+    const signupJson = await s.json();
+    assert.equal(signupJson.isSuperAdmin, false);
+    const l = await handleRequest(reqLogin({ email: "normal@teste.pt", password: "palavrapasse123" }), ctx("login"), getStoreImpl);
+    assert.equal((await l.json()).isSuperAdmin, false);
+    const m = await handleRequest(reqMe(signupJson.token), ctx("me"), getStoreImpl);
+    assert.equal((await m.json()).isSuperAdmin, false);
+  });
+
+  test("um email em SUPER_ADMIN_EMAILS fica isSuperAdmin: true (comparação sem distinguir maiúsculas)", async () => {
+    const anterior = process.env.SUPER_ADMIN_EMAILS;
+    process.env.SUPER_ADMIN_EMAILS = "outra@x.pt, Admin@Teste.PT ";
+    try {
+      const { getStoreImpl } = fakeStoreFactory();
+      const s = await handleRequest(reqSignup({ nomeFarmacia: "F", email: "admin@teste.pt", password: "palavrapasse123" }), ctx("signup"), getStoreImpl);
+      assert.equal((await s.json()).isSuperAdmin, true);
+    } finally {
+      process.env.SUPER_ADMIN_EMAILS = anterior;
+    }
+  });
+
+  test("admin-farmacias: sem token devolve 401", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    const res = await handleRequest(reqAdminFarmacias(null), ctx("admin-farmacias"), getStoreImpl);
+    assert.equal(res.status, 401);
+  });
+
+  test("admin-farmacias: token válido mas sem isSuperAdmin devolve 403", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    const s = await handleRequest(reqSignup({ nomeFarmacia: "F", email: "semadmin@teste.pt", password: "palavrapasse123" }), ctx("signup"), getStoreImpl);
+    const { token } = await s.json();
+    const res = await handleRequest(reqAdminFarmacias(token), ctx("admin-farmacias"), getStoreImpl);
+    assert.equal(res.status, 403);
+  });
+
+  test("admin-farmacias: super-admin recebe a lista de todas as farmácias, sem passwordHash", async () => {
+    const anterior = process.env.SUPER_ADMIN_EMAILS;
+    process.env.SUPER_ADMIN_EMAILS = "chefe@teste.pt";
+    try {
+      const { getStoreImpl } = fakeStoreFactory();
+      await handleRequest(reqSignup({ nomeFarmacia: "Farmácia Um", email: "um@teste.pt", password: "palavrapasse123" }), ctx("signup"), getStoreImpl);
+      await handleRequest(reqSignup({ nomeFarmacia: "Farmácia Dois", email: "dois@teste.pt", password: "palavrapasse123" }), ctx("signup"), getStoreImpl);
+      const chefe = await handleRequest(reqSignup({ nomeFarmacia: "Central", email: "chefe@teste.pt", password: "palavrapasse123" }), ctx("signup"), getStoreImpl);
+      const { token } = await chefe.json();
+
+      const res = await handleRequest(reqAdminFarmacias(token), ctx("admin-farmacias"), getStoreImpl);
+      assert.equal(res.status, 200);
+      const { farmacias } = await res.json();
+      assert.equal(farmacias.length, 3);
+      assert.ok(farmacias.every(f => !("passwordHash" in f)));
+      assert.ok(farmacias.some(f => f.nomeFarmacia === "Farmácia Um"));
+      assert.ok(farmacias.some(f => f.nomeFarmacia === "Farmácia Dois"));
+    } finally {
+      process.env.SUPER_ADMIN_EMAILS = anterior;
+    }
   });
 });

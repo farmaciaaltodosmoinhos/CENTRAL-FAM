@@ -541,12 +541,19 @@ function aplicarBrandingFarmacia(){
   if(img) img.src = FARMACIA_LOGO_SRC;
 }
 
+// Ponto 50 (bloqueio otimista): revisão do estado devolvida pelo servidor no
+// cabeçalho X-Estado-Rev (nunca no corpo — ver netlify/functions/data.js).
+// Reenviada em cada PUT: se outro dispositivo/separador gravou entretanto,
+// o servidor recusa com 409 em vez de deixar esta gravação apagar em
+// silêncio o que esse outro gravou.
+let ESTADO_REV = null;
 async function fetchEstado(){
   const token = getToken();
   if(!token){ voltarACentral(); throw new Error('sem sessão'); }
   const res = await fetch('/api/data', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
   if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
   if(!res.ok) throw new Error('HTTP ' + res.status);
+  ESTADO_REV = res.headers.get('X-Estado-Rev');
   const dados = await res.json();
   ESTADO_BRANDING_CACHE = dados;
   aplicarBrandingFarmacia();
@@ -558,21 +565,28 @@ async function fetchEstado(){
  *  Manipulados, Documentos, painel principal) — mesmo padrão dos outros
  *  módulos (ver netlify/functions/data.js, que faz o merge). */
 async function gravarGabinete(key, value){
-  const estadoAtual = await fetchEstado();
   const token = getToken();
-  const novoGabinete = { ...(estadoAtual.gabinete || {}), [key]: value };
-  // Logótipo omitido de propósito (ver carregarLogoAsset acima) — deixa de
-  // ser reenviado, o que faz o servidor parar de o guardar em config a
-  // partir desta gravação, sem migração à parte.
-  const configSemLogo = { ...(estadoAtual.config || {}) };
-  delete configSemLogo.logo;
-  const res = await fetch('/api/data', {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...estadoAtual, config: configSemLogo, gabinete: novoGabinete })
-  });
-  if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
-  if(!res.ok) throw new Error('HTTP ' + res.status);
+  for(let tentativa=1; tentativa<=3; tentativa++){
+    const estadoAtual = await fetchEstado();
+    const novoGabinete = { ...(estadoAtual.gabinete || {}), [key]: value };
+    // Logótipo omitido de propósito (ver carregarLogoAsset acima) — deixa de
+    // ser reenviado, o que faz o servidor parar de o guardar em config a
+    // partir desta gravação, sem migração à parte.
+    const configSemLogo = { ...(estadoAtual.config || {}) };
+    delete configSemLogo.logo;
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    if(ESTADO_REV != null) headers['X-Estado-Rev'] = ESTADO_REV;
+    const res = await fetch('/api/data', {
+      method: 'PUT', headers,
+      body: JSON.stringify({ ...estadoAtual, config: configSemLogo, gabinete: novoGabinete })
+    });
+    if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
+    if(res.status === 409){ continue; } // outro dispositivo/separador gravou entretanto — relê (próxima iteração) e tenta de novo
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    ESTADO_REV = res.headers.get('X-Estado-Rev') || ESTADO_REV;
+    return;
+  }
+  throw new Error('Não foi possível gravar: conflito de gravação persistente. Tente novamente.');
 }
 
 let FARMACIA_LOGO_SRC = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%237C5CBF'/%3E%3Cpath d='M38 50h24M50 38v24' stroke='white' stroke-width='10' stroke-linecap='round'/%3E%3C/svg%3E"; // placeholder genérico — só usado enquanto a farmácia não carregar o seu próprio logótipo em Configurações

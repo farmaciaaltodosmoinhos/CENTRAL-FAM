@@ -15,8 +15,17 @@
  *     antigo) continua a mostrá-lo corretamente.
  *  6. Poupança & ROI: registarUso()/debounce/robustez a flush falhado + dashboard.
  *  7. Leitura de DataMatrix/parseGS1.
+ *  8. Bloqueio otimista de /api/data (ponto 50): revisão no cabeçalho
+ *     X-Estado-Rev, 409 numa gravação desatualizada sem apagar a de outra
+ *     "aba", recuperação normal ao reler e tentar de novo, compatibilidade
+ *     com um PUT sem o cabeçalho.
+ *  9. Painel Developer/Super-Admin (ponto 54): uma conta normal fica
+ *     isSuperAdmin:false e é recusada (403) em /api/auth/admin-farmacias;
+ *     a conta fixa de teste (SUPER_ADMIN_EMAILS, ver local-server.mjs) fica
+ *     isSuperAdmin:true, recebe a lista de farmácias sem passwordHash, e o
+ *     botão "Painel Admin" só aparece no shell para essa conta.
  */
-import { BASE, ok, apiFetch, fakeLogoBase64, MODULOS, viewports, novaPaginaComSessao, signupFarmacia } from '../helpers.mjs';
+import { BASE, ok, apiFetch, fakeLogoBase64, MODULOS, viewports, novaPaginaComSessao, signupFarmacia, coletarErros } from '../helpers.mjs';
 
 export async function run(browser) {
   // ---------- 1. signup de duas farmácias de teste ----------
@@ -307,5 +316,118 @@ export async function run(browser) {
       !estadoAposRestauro.servicos.some(s => s.id === 'servico-extra-manut-qa'), JSON.stringify(estadoAposRestauro.servicos.map(s => s.id)));
 
     await ctx.close();
+  }
+
+  // ---------- 8. Bloqueio otimista de /api/data (ponto 50) ----------
+  // Contra o servidor real (local-server.mjs, mesmo código de
+  // netlify/functions/data.js) via HTTP a sério — não a chamada direta a
+  // handleRequest() já coberta em tests/data.test.js — para confirmar que o
+  // cabeçalho X-Estado-Rev atravessa mesmo um pedido HTTP real de ponta a
+  // ponta (não só o objeto Request/Response sintético dos testes unitários).
+  {
+    const emailLock = `qa-lock-${Date.now()}@x.pt`;
+    const signupLock = JSON.parse((await apiFetch('/api/auth/signup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nomeFarmacia: 'Farmácia QA Bloqueio', email: emailLock, password: 'password123' })
+    })).body);
+    const tokenLock = signupLock.token;
+
+    const get0 = await apiFetch('/api/data', { headers: { Authorization: `Bearer ${tokenLock}` } });
+    ok('Bloqueio otimista: GET /api/data devolve o cabeçalho X-Estado-Rev (revisão 0 para uma farmácia nova)',
+      get0.headers['x-estado-rev'] === '0', JSON.stringify(get0.headers['x-estado-rev']));
+
+    // duas "abas" leem a mesma revisão inicial
+    const revLidaPorAmbas = get0.headers['x-estado-rev'];
+
+    // a 1ª aba grava com sucesso, com essa revisão
+    const put1 = await apiFetch('/api/data', {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${tokenLock}`, 'Content-Type': 'application/json', 'X-Estado-Rev': revLidaPorAmbas },
+      body: JSON.stringify({ servicos: [{ id: 'da-1a-aba' }], categorias: [], config: {} })
+    });
+    ok('Bloqueio otimista: PUT com a revisão certa é aceite (200) e devolve a revisão nova', put1.status === 200 && put1.headers['x-estado-rev'] === '1', `status=${put1.status} rev=${put1.headers['x-estado-rev']}`);
+
+    // a 2ª aba tenta gravar com a MESMA revisão que já leu (0) — mas o servidor já está em 1
+    const put2 = await apiFetch('/api/data', {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${tokenLock}`, 'Content-Type': 'application/json', 'X-Estado-Rev': revLidaPorAmbas },
+      body: JSON.stringify({ servicos: [{ id: 'da-2a-aba-desatualizada' }], categorias: [], config: {} })
+    });
+    ok('Bloqueio otimista: PUT com revisão desatualizada é recusado com 409 em vez de apagar a gravação da 1ª aba', put2.status === 409, `status=${put2.status}`);
+
+    const estadoDepoisDoConflito = JSON.parse((await apiFetch('/api/data', { headers: { Authorization: `Bearer ${tokenLock}` } })).body);
+    ok('Bloqueio otimista: depois do 409, o estado gravado pela 1ª aba continua intacto (a 2ª não apagou nada)',
+      estadoDepoisDoConflito.servicos.length === 1 && estadoDepoisDoConflito.servicos[0].id === 'da-1a-aba', JSON.stringify(estadoDepoisDoConflito.servicos));
+
+    // a 2ª aba "reage" ao 409 como os módulos reais fazem: relê e volta a tentar com a revisão fresca
+    const getFresco = await apiFetch('/api/data', { headers: { Authorization: `Bearer ${tokenLock}` } });
+    const put3 = await apiFetch('/api/data', {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${tokenLock}`, 'Content-Type': 'application/json', 'X-Estado-Rev': getFresco.headers['x-estado-rev'] },
+      body: JSON.stringify({ servicos: [{ id: 'da-1a-aba' }, { id: 'da-2a-aba-depois-de-reler' }], categorias: [], config: {} })
+    });
+    ok('Bloqueio otimista: depois de reler e tentar de novo com a revisão fresca, a gravação é aceite (o caminho de recuperação real dos módulos)', put3.status === 200, `status=${put3.status}`);
+
+    // um cliente sem o cabeçalho (compatibilidade) continua a funcionar sem bloqueio nenhum
+    const putSemCabecalho = await apiFetch('/api/data', {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${tokenLock}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ servicos: [{ id: 'sem-cabecalho-x-estado-rev' }], categorias: [], config: {} })
+    });
+    ok('Bloqueio otimista: um PUT sem X-Estado-Rev continua a funcionar (compatibilidade com um cliente ainda não atualizado)', putSemCabecalho.status === 200, `status=${putSemCabecalho.status}`);
+  }
+
+  // ---------- 9. Painel Developer/Super-Admin (ponto 54) ----------
+  {
+    // conta normal — nunca é super-admin, e a rota recusa-a
+    const normal = await signupFarmacia('AdminQANormal');
+    ok('Painel Admin: signup de uma conta normal devolve isSuperAdmin: false',
+      normal.perfil && (JSON.parse((await apiFetch('/api/auth/me', { headers: { Authorization: `Bearer ${normal.token}` } })).body)).isSuperAdmin === false,
+      'perfil normal');
+    const negado = await apiFetch('/api/auth/admin-farmacias', { headers: { Authorization: `Bearer ${normal.token}` } });
+    ok('Painel Admin: /api/auth/admin-farmacias devolve 403 a uma conta sem permissões', negado.status === 403, `status=${negado.status}`);
+
+    // conta fixa de admin (SUPER_ADMIN_EMAILS='admin-e2e@teste.pt', ver local-server.mjs) — cria-a
+    // uma vez só (signup repetido devolveria 409); se já existir, faz login em vez de signup.
+    const emailAdmin = 'admin-e2e@teste.pt';
+    let signupAdmin = JSON.parse((await apiFetch('/api/auth/signup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nomeFarmacia: 'Central (conta admin e2e)', email: emailAdmin, password: 'password123' })
+    })).body);
+    if (signupAdmin.error) {
+      signupAdmin = JSON.parse((await apiFetch('/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailAdmin, password: 'password123' })
+      })).body);
+    }
+    ok('Painel Admin: a conta com email em SUPER_ADMIN_EMAILS fica isSuperAdmin: true', signupAdmin.isSuperAdmin === true, JSON.stringify(signupAdmin.isSuperAdmin));
+    const tokenAdmin = signupAdmin.token;
+
+    const listaRes = await apiFetch('/api/auth/admin-farmacias', { headers: { Authorization: `Bearer ${tokenAdmin}` } });
+    ok('Painel Admin: /api/auth/admin-farmacias devolve 200 para a conta admin', listaRes.status === 200, `status=${listaRes.status}`);
+    const { farmacias } = JSON.parse(listaRes.body);
+    ok('Painel Admin: a lista inclui a farmácia normal criada acima e nenhuma tem passwordHash',
+      farmacias.some(f => f.email === normal.email) && farmacias.every(f => !('passwordHash' in f)),
+      JSON.stringify(farmacias.map(f => f.email)));
+
+    // UI: o botão "Painel Admin" só aparece no shell para a conta admin, nunca para uma normal
+    const { ctx: ctxNormal, page: pageNormal } = await novaPaginaComSessao(browser, normal.token, { ...normal.perfil, isSuperAdmin: false });
+    await pageNormal.goto(`${BASE}/index.html`, { waitUntil: 'load', timeout: 15000 });
+    await pageNormal.waitForTimeout(400);
+    ok('Painel Admin: botão "Painel Admin" continua escondido para uma conta normal', await pageNormal.locator('#btnPainelAdmin').isHidden(), '');
+    await ctxNormal.close();
+
+    const { ctx: ctxAdmin, page: pageAdmin } = await novaPaginaComSessao(browser, tokenAdmin, { tenantId: signupAdmin.tenantId, email: emailAdmin, nomeFarmacia: 'Central (conta admin e2e)', isSuperAdmin: true });
+    await pageAdmin.goto(`${BASE}/index.html`, { waitUntil: 'load', timeout: 15000 });
+    await pageAdmin.waitForTimeout(400);
+    ok('Painel Admin: botão "Painel Admin" aparece no shell para a conta admin', await pageAdmin.locator('#btnPainelAdmin').isVisible(), '');
+
+    const errosAdminPage = coletarErros(pageAdmin);
+    await pageAdmin.goto(`${BASE}/modulos/admin-central.html`, { waitUntil: 'load', timeout: 15000 });
+    await pageAdmin.waitForTimeout(500);
+    const linhas = await pageAdmin.locator('table tbody tr').count();
+    ok('Painel Admin: a página admin-central.html lista as farmácias numa tabela', linhas >= 2, `linhas=${linhas}`);
+    ok('Painel Admin: admin-central.html carrega sem erros de página/consola', errosAdminPage.length === 0, JSON.stringify(errosAdminPage));
+    await ctxAdmin.close();
   }
 }
