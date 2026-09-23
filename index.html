@@ -73,6 +73,8 @@
         <button id="btnRefresh" class="btn-icon-round" title="Atualizar" data-i18n-title="common.atualizar"><span class="icon" id="refreshIcon"></span></button>
         <button id="btnNovoServico" class="btn-config primary"><span class="icon" id="plusIcon"></span> <span data-i18n="topbar.novo_servico">Novo serviço</span></button>
         <button id="btnAbrirConfig" class="btn-config"><span class="icon" id="slidersIcon"></span> <span data-i18n="common.configuracoes">Configurações</span></button>
+        <!-- Ponto 54 — só aparece (via app.js) para a(s) conta(s) listada(s) em SUPER_ADMIN_EMAILS -->
+        <button id="btnPainelAdmin" class="btn-config" hidden title="Painel Developer/Super-Admin — só visível para contas de administração"><span class="icon" id="painelAdminIcon"></span> <span>Painel Admin</span></button>
         <span class="farmacia-label" id="farmaciaLabel" title="Farmácia com sessão iniciada" data-i18n-title="topbar.farmacia_title"></span>
         <button id="btnLogout" class="btn-icon-round" title="Terminar sessão" data-i18n-title="topbar.terminar_sessao"><span class="icon" id="logoutIcon"></span></button>
       </div>
@@ -429,6 +431,35 @@
 
 <div class="toast-stack" id="toastStack"></div>
 
+<!-- Ponto 52 — fallback de arranque (auditoria 20/09, §4.1 "Dependência
+     Rígida de Ficheiros"): se src/app.js (ou um dos seus módulos internos)
+     ou assets/styles.css falharem a carregar/executar, a app antes ficava
+     num ecrã em branco sem qualquer pista do que aconteceu. Este script
+     clássico (não-module) corre de imediato, antes do módulo principal, e
+     mostra um aviso visível + botão de recarregar caso o sinal de "app
+     pronta" não chegue a tempo. -->
+<script>
+  window.__centralAppReady = false;
+  function centralMostrarFalhaArranque() {
+    if (window.__centralAppReady || document.getElementById("falhaArranque")) return;
+    var d = document.createElement("div");
+    d.id = "falhaArranque";
+    d.style.cssText = "position:fixed;inset:0;z-index:99999;background:#1f543e;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-family:sans-serif;padding:24px;";
+    d.innerHTML = "<div><h2 style='margin:0 0 12px;font-size:1.3rem;'>A aplicação não carregou</h2>"
+      + "<p style='margin:0 0 18px;opacity:.9;'>Verifique a ligação à internet e recarregue a página. Se o problema persistir, contacte o suporte.</p>"
+      + "<button type='button' id='falhaArranqueBtn' style='padding:10px 22px;border-radius:8px;border:none;background:#fff;color:#1f543e;font-weight:600;cursor:pointer;'>Recarregar</button></div>";
+    document.body.appendChild(d);
+    document.getElementById("falhaArranqueBtn").addEventListener("click", function () { location.reload(); });
+  }
+  // falhas de carregamento de <script>/<link> (ex.: assets/styles.css ou
+  // src/app.js a dar 404) não fazem "bubble" — só se apanham em captura.
+  window.addEventListener("error", function () { centralMostrarFalhaArranque(); }, true);
+  // exceções não tratadas durante a execução do módulo (ex.: um import
+  // interno de src/app.js em falta) chegam à janela sem captura.
+  window.onerror = function () { centralMostrarFalhaArranque(); };
+  // rede muito lenta ou módulo preso antes de emitir o sinal de "pronto".
+  setTimeout(centralMostrarFalhaArranque, 8000);
+</script>
 <script type="module" src="src/app.js"></script>
 <script type="module">
   // Ponto 29 — mini-chat da FARMA IA na página inicial (widget autónomo,

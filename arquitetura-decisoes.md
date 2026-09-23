@@ -2588,6 +2588,502 @@ sem nenhuma API externa de IA.
   `tests/farmaIa.test.js`, `tests/e2e/local-server.mjs`.
   A sincronizar na pasta `central multifarmácia` do PC do Ivo.
 
+- **Ponto 44 — Manipulados: disparo automático da pré-visualização de email ao criar um pedido, com a
+  receita em anexo (bug real reportado pelo Ivo).** O Ivo reportou dois problemas concretos no módulo
+  Manipulados: (1) ao criar um novo pedido e guardar, era suposto abrir logo a pré-visualização do
+  "Pedido de orçamento por email" ao laboratório, mas isso nunca acontecia — só era possível reabrir o
+  pedido e clicar manualmente em "✉ Pedir orçamento"; (2) mesmo nesse envio manual, a(s) receita(s)
+  carregada(s) no pedido nunca iam anexadas ao email.
+  Confirmado no código (`modulos/manipulados.html`): `saveCurrent()` nunca chamava `sendBudgetEmail()`
+  depois de criar um pedido novo, e `confirmSendEmail()` só enviava `{to, cc, subject, body}` — nunca
+  `attachments`. `aue.html` já resolvia exatamente este problema para os documentos do armazenista (envio
+  automático ao guardar, com um interruptor "Enviar automaticamente" nas Definições, e anexos resolvidos
+  via `dataStore.getAsset()` e enviados no mesmo `action:'sendEmail'` da Web App) — reaproveitou-se esse
+  padrão já existente e comprovado em vez de inventar um novo, incluindo o mesmo aviso honesto quando não
+  há Web App configurada ("mailto:" nunca consegue anexar ficheiros — o utilizador é avisado para anexar à
+  mão, nunca fica a pensar que foi enviado com o anexo quando não foi).
+  Mudanças em `modulos/manipulados.html`: novo interruptor "Enviar automaticamente" em "✉ Definições de
+  email" (`getEmailSettings().auto`, por omissão `true`); `sendBudgetEmail()` passou a resolver os anexos
+  do pedido (via `dataStore.getAsset()` para os já enviados ao armazenamento partilhado, ou `a.data` para
+  os que só ficaram no browser) e a mostrar a lista de anexos no preview (`#ep_attachments`);
+  `confirmSendEmail()` passou a enviar `attachments` no pedido à Web App, e a avisar claramente no
+  fallback "mailto:" que os anexos têm de ser adicionados à mão; `saveCurrent()` passou a chamar
+  `sendBudgetEmail(novoPedido)` no fim de criar um pedido novo, sempre que "Enviar automaticamente" estiver
+  ligado — nunca envia sozinho, fica sempre à espera de "Enviar email"/"Não enviar" no modal, tal como no
+  envio manual já existente.
+  Bug real encontrado e corrigido durante os testes desta sessão (não reportado pelo Ivo, mesma família de
+  bug já vista nos pontos 34/36/37 desta app): o botão "Ativado"/"Desativado" do novo interruptor chamava
+  `setAutoEmail(...)` a partir de um `onclick` inline, mas essa função só estava declarada dentro do
+  `<script type="module">` — nunca ficou acessível em `window`, pelo que o clique falhava sempre em
+  silêncio e o interruptor nunca mudava de estado nem gravava. Corrigido ao expor `window.setAutoEmail`,
+  tal como as restantes funções chamadas por `onclick`.
+  Verificação: `tests/e2e/modules/05-manipulados.mjs` ganhou uma secção 0 (desliga "Enviar automaticamente"
+  antes das secções 1-12, escritas antes desta funcionalidade existir e que não esperam que o preview abra
+  sozinho) e uma nova secção 13 dedicada — cria um pedido real com uma "receita" (imagem fabricada em
+  memória) anexada via `#f_anexo_input`, confirma que o preview do email abre sozinho sem clicar em nada,
+  confirma que a receita aparece listada em `#ep_attachments` (resolvida a sério contra o servidor local,
+  via `dataStore.getAsset`, não simulada), e confirma que desligar o interruptor volta a impedir o disparo
+  automático. **679/679 testes unitários** (inalterado — nenhuma lógica pura de `src/*.js` foi tocada) e
+  **490/490 verificações e2e** (486 anteriores + 4 novas desta correção), sem nenhuma regressão.
+  Ficheiros alterados: `modulos/manipulados.html`, `tests/e2e/modules/05-manipulados.mjs`.
+  A sincronizar na pasta `central multifarmácia` do PC do Ivo.
+
+  **Nota separada, fora do âmbito deste ponto — não tocada sem decisão explícita do Ivo:** ao investigar
+  um relatório de auditoria que o Ivo enviou em anexo (PDF de 20/09/2026), confirmou-se no código real que
+  `modulos/devolucao-frio.html` chama `https://api.anthropic.com/v1/messages` **diretamente do browser**,
+  com uma chave API da Anthropic introduzida pelo próprio utilizador num campo da UI (nunca é guardada em
+  `localStorage`, mas viaja em claro no pedido de rede e fica visível em qualquer ferramenta de
+  programador). Isto contradiz diretamente a regra absoluta desta app (ponto 29: nunca API de IA externa) —
+  é uma exceção pré-existente no código, não algo introduzido nesta sessão. Decisão do Ivo registada e
+  executada no ponto 45, logo a seguir.
+
+- **Ponto 45 — remoção da chamada direta à API da Anthropic em `devolucao-frio.html` (decisão explícita
+  do Ivo: "Remove mesmo a chamar da api").** Sequência direta da nota do ponto 44: confirmada a violação
+  real da regra ponto 29 (nunca API de IA externa), o Ivo pediu a remoção completa, não uma mudança de
+  arquitetura (mover para um backend/proxy não resolveria — a regra é "nunca IA externa", não "nunca do
+  lado do browser").
+  Removido de `modulos/devolucao-frio.html`, por inteiro (nada ficou "desligado" ou comentado — o código
+  morto também é risco): o botão da toolbar "📎 Carregar ficheiro (auto-preencher)"; o modal de upload
+  (incluindo o campo de "Chave API Anthropic" e a zona de arrastar/largar ficheiro); o overlay de
+  processamento ("A analisar com IA…"); as funções `openUpload`/`closeUpload`/`onDragOver`/`onDragLeave`/
+  `onDrop`/`handleFile`/`toBase64`/`sleep` e as suas exposições em `window`; e o CSS exclusivo destes
+  elementos (`.upload-zone`, `.upload-box`, `.drop-area`, `.drop-icon`, `.upload-close`,
+  `.processing-overlay`, `.spinner`, incluindo a referência a estas classes na regra `@media print`). O
+  preenchimento manual dos campos do formulário (datas, nº de fatura, linhas de produtos) não foi tocado —
+  continua a funcionar exatamente como antes, é só o atalho automático por IA que deixou de existir.
+  Também removida a entrada `auto_preencher_ia` do catálogo de tarefas do Poupança & ROI
+  (`src/usoCatalogo.js`) — deixar essa entrada não teria efeito prático (a tarefa nunca mais é registada),
+  mas mantê-la seria uma "promessa" enganosa de uma funcionalidade que já não existe.
+  Verificação: `node --check` ao script do módulo (sintaxe válida), varrimento completo do repositório
+  confirmando zero referências residuais a `api.anthropic.com`, `apiKeyInput` ou `auto_preencher_ia`. A
+  suite e2e do módulo (`tests/e2e/modules/13-devolucao-frio.mjs`) trocou a secção que testava o aviso de
+  "chave API em falta" por uma que confirma ativamente que o botão, o modal e o campo de chave já não
+  existem na página. A contagem do catálogo de tarefas em `tests/usoCatalogo.test.js` desceu de 154 para
+  153. **679/679 testes unitários e 490/490 verificações e2e**, sem nenhuma regressão nos restantes 12
+  módulos com fluxos de email/anexos/upload (nenhum deles depende deste código).
+  Ficheiros alterados: `modulos/devolucao-frio.html`, `src/usoCatalogo.js`, `tests/usoCatalogo.test.js`,
+  `tests/e2e/modules/13-devolucao-frio.mjs`.
+  A sincronizar na pasta `central multifarmácia` do PC do Ivo.
+
+- **Ponto 46 — motor de ações direto da FARMA (mini-chat incluído), nome personalizável, correção do
+  "Treinar agora" e expansão da rede neuronal para ~1000 exemplos.** Pedido direto do Ivo, na sequência do
+  plano de melhorias pendentes de 20/09/2026 (documento à parte, `plano-melhorias-pendentes-2026-09.md`):
+  "Ok avança com tudo e liga directsmente o motor de ações da farma, além disso nas opções da farma deverá
+  ter a opção de mudar de nome. No treino intensivo o botão treinar agora não funciona. Aumenta as
+  conexões da Farma para 1000". Quatro peças distintas, tratadas em conjunto por tocarem nos mesmos
+  ficheiros. "Avança com tudo" foi interpretado como as Fases A e B do plano (o que mais mudava o
+  dia-a-dia da FARMA e a cobertura de testes à volta disso) — as Fases C (correções concretas do PDF de
+  auditoria: NIF/email no AUE, SRI, JSON das Devoluções) e D (maturidade SaaS: password/admin/faturação/
+  RGPD, condicional a uma decisão de negócio do Ivo) ficam por avançar, ver Plano de trabalho abaixo.
+
+  **1. Motor de ações ligado diretamente, sem depender de nenhuma IA (nem local nem externa).** A Fase A do
+  plano identificou a causa raiz da queixa "a FARMA não consegue de facto fazer as tarefas": o balão de
+  chat sempre visível (`src/ui/farmaMiniChat.js`) nunca importava nada de `farmaAcoes.js` — um pedido de
+  ação ali era estruturalmente impossível de cumprir, sempre que fosse usado — e no módulo completo
+  (`modulos/farma-ia.html`) o motor de ações só corria dentro de `if (cerebroEngine)`, ou seja, só depois
+  de descarregar manualmente um modelo de IA local de várias centenas de MB, desligado por omissão e sem
+  nenhum aviso de que era preciso ativá-lo primeiro.
+  Novo ficheiro `src/farmaAcoesIntent.js`: reconhecimento de pedidos de ação por correspondência
+  determinística de padrões (verbo de ação explícito — cria/marca/adiciona/remove/... — + âncora de
+  domínio + extração de parâmetros por texto entre aspas/âncoras nomeadas/padrões de telefone-NIF-data-
+  hora), cobrindo as 20 ações já catalogadas em `ACOES_DISPONIVEIS`. Zero modelo de IA envolvido — cumpre
+  a regra do ponto 29 tanto quanto o motor de perguntas por regras já cumpria. Nunca inventa nem executa
+  sozinho: um reconhecimento completo produz sempre o mesmo cartão "Confirmar/Cancelar" já existente
+  (`prepararAcao`/`executarAcaoConfirmada`, com toda a validação contra dados reais só ao confirmar); um
+  reconhecimento incompleto (falta um parâmetro obrigatório) pede esclarecimento em vez de adivinhar; texto
+  que não corresponde a nenhuma ação devolve `null` e segue para o caminho de sempre (perguntas e respostas
+  e, por fim, a IA local opcional). Ligado tanto a `modulos/farma-ia.html` como, pela primeira vez, ao
+  mini-chat (`src/ui/farmaMiniChat.js`) — o ponto de entrada mais visível da app, que antes desta peça não
+  tinha nenhuma ação ligada.
+
+  **Bug real encontrado e corrigido durante esta mesma peça (transparência sobre um erro próprio):** a
+  primeira versão da ligação chamava `reconhecerAcaoDeterministica` só depois de `responderPergunta` (o
+  motor de perguntas por regras) não reconhecer nada — mesma ordem, por engano, nos dois ficheiros. O motor
+  de perguntas (`corresponde()` em `farmaIa.js`) casa por qualquer palavra-chave isolada em qualquer
+  posição do texto, sem exigir verbo nem estrutura de frase, e o vocabulário de domínio das ações
+  ("manipulado", "aue", "catalogo", ...) sobrepõe-se ao de várias intenções de pergunta já existentes
+  (`pedidos_manipulados`, `pedidos_aue`, etc.) — por isso, com essa ordem, uma frase como "cria um pedido
+  de manipulado para a Ana Costa, medicamento minoxidil 5%, telefone 912345678" era sempre intercetada
+  primeiro pelo motor de perguntas, que respondia com uma frase enlatada ("Ainda não há nenhum pedido de
+  manipulado registado") em vez de nunca sequer chegar a mostrar o cartão de ação — o mesmo problema que
+  esta peça devia resolver, só que reintroduzido pela própria ordem do código novo. Apanhado com um script
+  de depuração isolado (Playwright a inspecionar o HTML real do chat) antes de qualquer sincronização,
+  nunca chegou a ser usado pelo Ivo. Corrigido nos dois ficheiros: o reconhecimento de ações corre agora
+  SEMPRE antes do motor de perguntas, não depois — seguro de fazer porque os gatilhos deste reconhecimento
+  exigem sempre um verbo de ação explícito além da âncora de domínio, e perguntas genuínas (interrogativas,
+  sem esse verbo) nunca acionam esses gatilhos, confirmado por um conjunto de 13 frases de controlo
+  negativo em `tests/farmaAcoesIntent.test.js` (perguntas reais que partilham vocabulário com ações e
+  continuam corretamente a devolver `null`).
+  Novo ficheiro de testes unitários `tests/farmaAcoesIntent.test.js` (14 testes: extração de nome/
+  medicamento/telefone, esclarecimento pedido quando falta um parâmetro obrigatório, correspondência exata
+  de armazenista/estado, extração por aspas, uma regressão documentada — "cria uma lista de inscrição
+  chamada..." confundido com `listas.inscrever` por a palavra "inscrição" aparecer no nome genérico da
+  ação de criar lista — e outra regressão de limite de palavra — "a lista" a corresponder por engano dentro
+  de "uma lista"). Novo ficheiro de teste e2e `tests/e2e/modules/18-farma-acoes-diretas.mjs` (16
+  verificações: pedido completo no módulo → cartão → confirmar → gravado no servidor; parâmetro em falta →
+  esclarecimento, nunca um cartão a adivinhar; o mesmo percurso completo a partir do mini-chat, incluindo
+  confirmar que uma pergunta normal continua a responder como pergunta e não é confundida com uma ação; e o
+  nome personalizado, ver a seguir).
+
+  **2. Nome da assistente personalizável.** Pedido do Ivo ("nas opções da farma deverá ter a opção de
+  mudar de nome"). Novo campo `config.farmaNomeAssistente` (por farmácia, guardado no servidor como o
+  resto da configuração). Em `modulos/farma-ia.html`: título do módulo com um botão de lápis ao lado que
+  abre um editor em popover; o nome escolhido passa a aparecer no título, na saudação ao abrir o módulo e
+  nas respostas de ajuda ("Sou a Sofia: respondo a perguntas sobre..."). O mini-chat lê o mesmo campo
+  (mesma origem de dados, `dataStore.getEstadoCompleto()`) e usa o nome escolhido no cabeçalho da bolha e
+  na saudação — sem duplicar a gestão do nome, só a leitura. Nome por omissão continua "FARMA" quando a
+  farmácia nunca o mudou.
+
+  **3. Correção do "Treinar agora" (aba Aprender → Treino intensivo).** Queixa do Ivo: "No treino
+  intensivo o botão treinar agora não funciona." Investigação honesta: não foi possível reproduzir um erro
+  concreto só a partir do código (a lógica de treino, o `import()` dinâmico e o `type="module"` no
+  `netlify.toml` estavam corretos) — as duas causas mais plausíveis identificadas foram falta de clareza na
+  interface, e ambas foram corrigidas defensivamente: (a) o botão fica desativado (cinzento, sem clicar a
+  fazer nada visível) sempre que a farmácia ainda não ensinou pelo menos 3 perguntas — a mensagem ao lado
+  passou a explicar isto de forma explícita ("O botão 'Treinar agora' está desativado (a cinzento) porque
+  ainda só ensinou N pergunta(s) — precisa de pelo menos 3..."), com um `title` (tooltip) no próprio botão
+  para quem não repara na mensagem; (b) se o treino falhar por qualquer motivo real (ex.: o portão de
+  sanidade recusa um modelo pior), a mensagem de erro passou a incluir a razão concreta devolvida pelo
+  código, em vez de uma mensagem genérica. Sem conseguir ver o ecrã real do Ivo não é possível garantir a
+  causa exata a 100%, mas ambos os cenários mais prováveis ficam agora claramente comunicados.
+
+  **4. "Aumenta as conexões da Farma para 1000".** Frase ambígua — resolvida sem perguntar ao Ivo, por
+  haver precedente direto no próprio código desta sessão: o comentário de cabeçalho de
+  `src/farmaTreinoLocal.js` (ponto 43) já registava um pedido anterior do Ivo para "expandir a rede
+  neuronal ao máximo". Interpretado como pedido para aumentar o conjunto de dados de treino da rede
+  neuronal — não o número de ligações/neurónios da arquitetura (essa contagem já ultrapassa largamente
+  1000 mesmo sem alterações, e mexer nela sem mais dados só pioraria o sobreajuste). `scripts/dados-treino-
+  farma.mjs` expandido de 298 para 997 frases de exemplo, mantendo a mesma estrutura e as mesmas 12 classes
+  (escala proporcional ~3,35× em todas, zero duplicados exatos). Pesos regenerados com
+  `scripts/treinar-rede-farma.mjs`: 798 exemplos de treino / 199 de validação, paragem antecipada ao fim de
+  730 épocas, 99,5% de exatidão em treino, 92,0% em validação (a subir dos ~85-92% típicos do ponto 43 com
+  o conjunto mais pequeno). Efeito colateral esperado e verificado, não uma regressão: um erro de escrita
+  isolado sem contexto ("utntes", sozinho) deixou de atingir o limiar de confiança de 0,85 (passou a
+  0,784) — o conjunto de dados maior e mais diverso tornou a rede corretamente menos confiante com pouco
+  contexto, ao mesmo tempo que melhorou muito a confiança em frases completas mais realistas (a mesma
+  frase, mas em contexto — "quantos utnetes tenho" — mantém confiança 1,000). `tests/e2e/modules/
+  16-farma-ia.mjs` atualizado para usar a frase completa nesse teste, com um comentário a explicar
+  porque é o comportamento certo e não uma quebra.
+
+  **Verificação.** Suite completa a passar sem regressões: **693/693 testes unitários** (subindo de 679,
+  +14 de `farmaAcoesIntent.test.js`) e **506/506 verificações e2e** em navegador real (subindo de 490,
+  +16 de `18-farma-acoes-diretas.mjs`), incluindo os 17 ficheiros de teste já existentes, sem nenhum caso
+  de uma pergunta genuína (ex.: "tenho manipulados pendentes", "quantas divergências de stock tenho") a
+  ser incorretamente apanhada pelo reconhecimento de ações agora a correr primeiro.
+  Ficheiros alterados: `src/farmaIa.js`, `modulos/farma-ia.html`, `src/ui/farmaMiniChat.js`,
+  `src/farmaAcoesIntent.js` (novo), `tests/farmaAcoesIntent.test.js` (novo), `scripts/dados-treino-
+  farma.mjs`, `src/farmaRedePesos.json`, `tests/e2e/modules/16-farma-ia.mjs`,
+  `tests/e2e/modules/17-farma-aprender.mjs`, `tests/e2e/modules/18-farma-acoes-diretas.mjs` (novo).
+  A sincronizar na pasta `central multifarmácia` do PC do Ivo assim que a ligação ao computador for
+  restabelecida (esteve indisponível nesta sessão).
+
+- **Ponto 47 — correção de um bug real na impressão de Bolachas Promocionais.** Queixa direta do Ivo: "Há
+  um bug na impressão das bolachas". Sem mais detalhe, foi reproduzido diretamente no código/browser
+  (Playwright), não à mão à espera de o "adivinhar" — investigação e correção feitas antes de qualquer
+  sincronização para o PC, para o Ivo nunca ter chegado a ver a versão com o bug corrigido só na aparência.
+
+  **Causa raiz confirmada.** `cloneCanvasForPrint()` (`modulos/documentos.html`), usada só pelo botão
+  "🖨 Imprimir esta bolacha" (impressão de UMA bolacha — a "🖨 Imprimir folha completa", com várias
+  bolachas, usa outro caminho de código, próprio, que nunca teve este problema), clonava o desenho da
+  bolacha e removia a classe CSS `layer-el` de cada camada de texto/imagem antes de imprimir — a intenção
+  era só tirar o cursor de "mover" e o contorno tracejado do modo de edição. Só que `.layer-el` é também a
+  ÚNICA regra CSS que dá `position:absolute` a essas camadas (o `style` em linha de cada uma só tem
+  `left`/`top`/`width`/`height` em percentagem, nunca `position`) e a única que força a imagem/o texto a
+  preencher a sua caixa (`.layer-el img`, `.layer-el .layer-text-inner`). Sem a classe, a camada de texto
+  (e qualquer imagem/logótipo adicionado) passava a `position:static` — confirmado por inspeção direta do
+  estilo computado, `absolute` → `static` — e saía impressa fora do sítio desenhado no ecrã, em fluxo
+  normal da página, em vez de sobreposta à forma da bolacha nas coordenadas escolhidas. O resultado real
+  para o Ivo: a pré-visualização no ecrã ficava correta, mas a bolacha impressa (uma de cada vez) saía com
+  o texto (e imagens) desalinhados/fora da forma.
+
+  **Correção.** `cloneCanvasForPrint()` deixa de remover a classe `layer-el` — mantém-na (preserva o
+  posicionamento e o preenchimento da caixa) e só anula à mesma o que era mesmo só de edição: cursor,
+  contorno e a classe `selected`, agora via `style` em linha explícito em vez de apagar a classe toda.
+  Confirmado por inspeção do estilo computado depois da correção: `position:absolute` mantido, tanto em
+  media `screen` como `print`.
+
+  **Verificação.** Escrita uma verificação e2e nova e dedicada (`tests/e2e/modules/03-documentos.mjs`,
+  passo 22) que aciona "Imprimir esta bolacha" a sério e confirma o estilo computado da camada de texto
+  clonada (`position:absolute`, classe `layer-el` preservada) — zero cobertura existia antes disto para o
+  percurso de impressão de Bolachas (nota deliberada já registada no topo do ficheiro: as vistas com
+  arrastar/largar ficam de fora, mas este teste não precisa de simular arrastar, só o botão de imprimir).
+  **693/693 testes unitários e 507/507 verificações e2e** (subindo de 506, +1 desta verificação), sem
+  regressões nos restantes 17 ficheiros de teste, incluindo o resto do módulo Documentos (Pastas,
+  Declarações, Biblioteca).
+  Ficheiros alterados: `modulos/documentos.html`, `tests/e2e/modules/03-documentos.mjs`.
+  A sincronizar na pasta `central multifarmácia` do PC do Ivo assim que a ligação ao computador for
+  restabelecida (indisponível nesta sessão).
+
+- **Ponto 48 — Bolachas: várias caixas de texto independentes, cada uma com o seu tamanho e cor de
+  letra.** Pedido direto do Ivo: "preciso que ponhas a opção para criar diversas caixas de texto nas
+  bolachas e posibilidade de tamanho e cor de letras independesntes em cada caixa". Até aqui só existia
+  UMA caixa de texto por bolacha (`bolachaState.textLayer`, singular) — todo o texto da bolacha tinha
+  sempre o mesmo tamanho e a mesma cor.
+
+  **Alterado `modulos/documentos.html`.** `bolachaState.textLayer` (objeto único) passou a
+  `bolachaState.textLayers` (array de objetos, cada um com o seu `id`, texto, posição/tamanho na bolacha
+  e agora também o seu próprio `fontSize` e `color`, totalmente independentes dos das outras caixas).
+  Formulário: cada caixa ganhou o seu próprio bloco na coluna de edição (texto, tamanho, cor e um botão
+  "🗑 Remover" só dessa caixa), mais um botão "➕ Adicionar caixa de texto" que cria uma nova caixa com um
+  pequeno deslocamento em relação às existentes (para não nascer exatamente em cima de outra). Cada caixa
+  continua arrastável/redimensionável na pré-visualização, exatamente como já acontecia com a única caixa
+  antes — e ganhou também um "✕" para remover diretamente no desenho, tal como as imagens já tinham.
+  `printBolachaSheet()` (impressão de várias bolachas na mesma folha) e `cloneCanvasForPrint()` (impressão
+  de uma bolacha, ver ponto 47) foram atualizadas/confirmadas a imprimir TODAS as caixas de uma bolacha,
+  cada uma com o seu próprio tamanho/cor — não só a primeira.
+  **Compatibilidade com bolachas já guardadas** (histórico local, até 40 versões, e a fila de impressão):
+  uma nova função `normalizeBolachaState()` converte automaticamente, na primeira vez que forem reabertas,
+  as bolachas antigas de "uma caixa" (`textLayer`) para o novo formato de "várias caixas"
+  (`textLayers: [...]`, com essa única caixa antiga preservada tal e qual) — nenhuma bolacha guardada
+  antes desta peça se perde ou fica com o texto diferente.
+
+  **Bug próprio encontrado e corrigido ainda dentro desta mesma peça, antes de qualquer sincronização):**
+  `modulos/documentos.html` é carregado como módulo ES (`type="module"`), e por isso o ficheiro mantém
+  uma lista explícita, no fim do ficheiro, de `window.<nomeDaFunção> = <nomeDaFunção>` para cada função
+  chamada a partir de um `onclick="..."` inline no HTML (sem essa linha, o `onclick` falha com "... is not
+  defined", porque um módulo não expõe automaticamente as suas funções de topo em `window`, ao contrário
+  de um script normal). As duas novas funções (`addBolachaTextBox`, `removeBolachaTextBox`) tinham ficado
+  de fora dessa lista — o botão "Adicionar caixa de texto" não fazia nada, sem erro visível no ecrã (só na
+  consola). Apanhado a testar antes de sincronizar, corrigido acrescentando as duas linhas em falta.
+
+  **Verificação.** Testes e2e novos e dedicados em `tests/e2e/modules/03-documentos.mjs` (passo 23):
+  confirma que uma bolacha nova continua a começar com 1 caixa (compatibilidade), que "Adicionar caixa de
+  texto" cria mesmo uma segunda caixa independente, que cada caixa mantém o seu próprio texto/tamanho/cor
+  tanto na pré-visualização como na impressão de uma bolacha (a segunda caixa com tamanho 30px e vermelho
+  não "contamina" a primeira, que fica a 13px branco), e que "Remover" tira só a caixa certa. **693/693
+  testes unitários e 512/512 verificações e2e** (subindo de 507, +5 destas verificações), sem regressões
+  no resto do módulo Documentos nem em mais nenhum módulo.
+  Ficheiros alterados: `modulos/documentos.html`, `tests/e2e/modules/03-documentos.mjs`.
+  Sincronizado na pasta `central multifarmácia` do PC do Ivo (ligação restabelecida nesta sessão) — ver
+  confirmação de tamanhos de ficheiro no fim desta entrada.
+
+- **Ponto 49 — AUE: validação de formato de NIF/email antes de gravar.** Fase C do plano de melhorias
+  de 20/09/2026 (auditoria PDF, `plano-melhorias-pendentes-2026-09.md`): até aqui só se confirmava que
+  os campos NIF/email não estavam vazios, nunca que tinham um formato válido — um NIF com um dígito
+  trocado ou um email sem "@" passavam sem qualquer aviso.
+
+  Duas funções novas, puras e reutilizáveis em `src/utils.js`: `validarNif(nif)` (algoritmo oficial
+  português de dígito de controlo, módulo 11 — aceita o valor com espaços/pontos, ex. "123 456 789") e
+  `validarEmail(email)` (regex deliberadamente permissiva: só apanha a falta de "@"/domínio ou espaços
+  colados por engano, não tenta cobrir todo o RFC 5322). Cobertas por testes unitários dedicados em
+  `tests/utils.test.js`.
+
+  Em `modulos/aue.html`, `saveCurrent()` passa a validar o formato logo a seguir ao check de campos
+  vazios já existente — nesta ordem, para as mensagens nunca confundirem "está vazio" com "tem o formato
+  errado": NIF inválido foca o campo e avisa; email inválido idem; os dois em simultâneo mostram um aviso
+  combinado. Cada campo ganha/perde a classe visual `field-error` consoante o resultado.
+
+  **Fixtures de teste corrigidas antes de continuar.** 5 NIFs de teste pré-existentes em
+  `tests/e2e/modules/04-aue.mjs` (ex. `111222333`) tinham dígitos de controlo inválidos — iam começar a
+  falhar assim que a validação nova entrasse em vigor. Corrigidos para os checksums reais mais próximos
+  (`111222338`, `444555668`, `777888998`, `199199779`, `199199884`). Confirmado por grep que
+  `tests/e2e/modules/05-manipulados.mjs`, que reutiliza 2 destes mesmos números, não valida formato de
+  NIF — ficheiro diferente, não precisava do mesmo ajuste.
+
+  Novo bloco de teste e2e "1b": confirma que um NIF com dígito de controlo errado bloqueia a gravação
+  (o modal continua aberto, o campo ganha `field-error`), que um email sem "@"/domínio faz o mesmo, e que
+  corrigir o NIF tira a classe de erro só desse campo.
+
+  **Verificação.** 703/703 testes unitários e 517/517 verificações e2e (subindo de 512, +5 destas
+  verificações), sem nenhuma regressão em mais nenhum módulo.
+  Ficheiros alterados: `src/utils.js`, `tests/utils.test.js`, `modulos/aue.html`,
+  `tests/e2e/modules/04-aue.mjs`.
+  Sincronizado na pasta `central multifarmácia` do PC do Ivo.
+
+- **Ponto 50 — Devoluções a Armazenistas: corrigidos 155 nomes de produto duplicados; avaliado (e
+  adiado, por agora) o tamanho do JSON de 2,24 MB.** Fase C do mesmo plano de melhorias.
+
+  **Corrupção de dados — corrigida.** O JSON embutido em `modulos/devolucoes-armazenistas.html` (29 294
+  produtos) tinha designações com uma palavra imediatamente repetida por engano (ex.: "Ausonia Talco
+  Talco 200 G", o próprio exemplo citado na auditoria). Verificação sistemática com a expressão
+  `\b(palavra)\s+\1\b` (sem distinguir maiúsculas/minúsculas) sobre as 29 294 designações encontrou 162
+  correspondências brutas — revistas uma a uma antes de decidir a correção, não corrigidas às cegas.
+  "Ylang Ylang" (7 produtos) é um nome legítimo de fragrância/ingrediente botânico, não corrupção —
+  excluído da correção por uma lista de exclusões dedicada. Das restantes 155, a maioria segue o padrão
+  simples "palavra repetida uma vez" e fica totalmente limpa; 4 casos mais complexos seguem um padrão de
+  concatenação invertida "A B B A" (ex. "Perborato Sodio Sodio Perborato 1 Kg") — a correção da palavra
+  imediatamente repetida melhora-os (→ "Perborato Sodio Perborato 1 Kg") mas não os "limpa" por completo;
+  decidido deliberadamente não tentar adivinhar uma reconstrução completa desses 4 casos, para não trocar
+  um erro por outro sem confirmar a designação real junto da fonte (armazenista/laboratório).
+  Confirmado por nova verificação: zero correspondências fora da lista de exclusões depois da correção.
+  Estrutura e contagens do JSON (29 294 produtos, 1165 detentores, 3095 entradas de diretório)
+  inalteradas — só o texto das 155 designações mudou (bloco de dados: 2 241 433 → 2 240 391 caracteres).
+
+  **Tamanho do JSON de 2,24 MB — avaliado, refactor adiado deliberadamente.** Medido diretamente: o
+  mesmo conteúdo comprimido com gzip cai para ~625 KB (redução de ~73%) — a generalidade dos
+  alojamentos estáticos modernos (Netlify incluído) comprime HTML/JSON por omissão, pelo que o custo real
+  de transferência de rede é provavelmente já bem menor do que os 2,24 MB brutos sugerem (por confirmar
+  com o Ivo qual é exatamente o alojamento final e se a compressão está mesmo ativa aí). O que fica por
+  resolver é o custo de um `JSON.parse` síncrono deste tamanho logo no arranque do módulo — reduzir isso
+  a sério exigiria mover os dados para um ficheiro `.json` externo e passar o carregamento de `RAW` de
+  síncrono para assíncrono (`fetch` + `await`), o que obriga a rever toda a IIFE do módulo (hoje assume
+  `RAW` disponível de imediato) e tudo o que depende dela antes do primeiro render. Dado o risco real de
+  regressão num módulo de negócio já grande e bem testado (39 verificações e2e cobrindo consulta, lote,
+  produtos, regras e importação), decidido não fazer esse refactor dentro desta passagem de correções
+  rápidas — fica como item à parte, dedicado, para quando houver tempo de o testar com o cuidado que
+  merece.
+
+  **Verificação.** 703/703 testes unitários e 517/517 verificações e2e, sem nenhuma regressão (incluindo
+  as 39 verificações próprias do módulo Devoluções a Armazenistas).
+  Ficheiro alterado: `modulos/devolucoes-armazenistas.html` (só o bloco JSON embutido).
+  Sincronizado na pasta `central multifarmácia` do PC do Ivo.
+
+- **Ponto 51 — bloqueio otimista em `/api/data`.** Fase C do mesmo plano de melhorias: a rota
+  partilhada `/api/data` (ver ponto 8) não tinha nenhum controlo de concorrência — cada módulo faz um
+  read-modify-write clássico (lê o estado inteiro, muda só a sua fatia, grava o estado inteiro outra
+  vez). Sem bloqueio nenhum, dois separadores/dispositivos da MESMA farmácia a gravar quase ao mesmo
+  tempo podiam perder-se um ao outro: o PUT mais lento a responder repõe, por cima do que o mais rápido
+  acabou de gravar, o instantâneo antigo que tinha lido — incluindo campos de módulos que nem sequer
+  mexeu (o merge do servidor espalha sempre TODO o `estadoAtual` que o cliente leu, não só a fatia que
+  alterou). As filas `gravarQueue`/`enqueueSync` já existentes em vários módulos (pim, gabinete,
+  manipulados, stocks, devoluções — ver pontos anteriores) só protegem contra isto DENTRO da mesma aba;
+  duas abas, dois computadores, ou o mesmo posto com duas janelas abertas continuavam vulneráveis.
+
+  **Servidor (`netlify/functions/data.js`).** Cada farmácia passa a ter um número de revisão simples
+  (`estado:<tenantId>:rev`, um inteiro numa chave à parte do estado em si — nunca faz parte do JSON
+  devolvido por GET, para não mudar a forma que os módulos já conhecem). O GET devolve-o no cabeçalho
+  `X-Estado-Rev`; um PUT pode devolver esse mesmo valor nesse cabeçalho — o servidor só grava e avança a
+  revisão se ainda coincidir com a revisão atual; caso contrário devolve 409 (Conflito) sem escrever
+  nada, com a revisão real no corpo, para o cliente reler e tentar de novo. Um PUT sem esse cabeçalho
+  (compatibilidade) continua a funcionar exatamente como antes, sem bloqueio — nunca haveria um cliente
+  assim depois desta peça (todos os que escrevem foram atualizados), mas mantido por segurança, para
+  nunca partir um caminho de escrita esquecido nesta ronda.
+
+  **Cliente — 7 módulos e o painel principal.** `fetchEstado()`/`ensureLoaded()` de cada um passa a
+  guardar a revisão lida (`X-Estado-Rev`, nunca no corpo do estado); cada `gravarXxx()` reenvia-a e, ao
+  receber 409, relê o estado fresco e tenta de novo (até 3 vezes) — só desiste com um erro claro, nunca
+  em silêncio. Alterados: `modulos/aue.html`, `modulos/devolucoes-armazenistas.html`,
+  `modulos/documentos.html`, `modulos/manipulados.html`, `modulos/gabinete.html`, `modulos/pim.html`,
+  `modulos/stocks.html` (cada um com uma única função de gravação, mesmo padrão nos 7), e
+  `src/db.js` (`persist()`, usado pelo painel principal para servicos/categorias/config; e
+  `gravarEstadoCompleto()`, usado pela Auto-manutenção para restauro/reparação — aqui o retry reenvia o
+  mesmo conteúdo com a revisão fresca, em vez de reaplicar uma mudança, porque um restauro é por natureza
+  "escrever exatamente isto"). Os 5 módulos só de leitura de branding (catalogo-produtos, devolucao-frio,
+  mapa-cardiovascular, medela, reservas) não escrevem em `/api/data` — não precisaram de alteração.
+
+  **Verificação.** 6 testes unitários novos em `tests/data.test.js` (revisão a começar em 0, PUT sem
+  cabeçalho continua sem bloqueio, PUT com a revisão certa avança a revisão, PUT com revisão desatualizada
+  devolve 409 sem escrever — confirmado que o estado da "1ª aba" fica intacto —, recuperação normal ao
+  reler e tentar de novo, revisões de duas farmácias totalmente independentes) e 6 verificações e2e novas
+  em `tests/e2e/modules/00-core.mjs`, estas contra o servidor local real por HTTP a sério (não só a
+  chamada direta a `handleRequest()` dos testes unitários), com o mesmo cenário das 2 abas. **709/709
+  testes unitários e 523/523 verificações e2e** (subindo de 517), sem nenhuma regressão em mais nenhum
+  módulo.
+  Ficheiros alterados: `netlify/functions/data.js`, `tests/data.test.js`, `src/db.js`, `modulos/aue.html`,
+  `modulos/devolucoes-armazenistas.html`, `modulos/documentos.html`, `modulos/manipulados.html`,
+  `modulos/gabinete.html`, `modulos/pim.html`, `modulos/stocks.html`, `tests/e2e/modules/00-core.mjs`.
+  Sincronizado na pasta `central multifarmácia` do PC do Ivo.
+
+- **Ponto 52 — AUE: validação de formato de telefone antes de gravar.** Fase C do mesmo plano de
+  melhorias — fecha o último dos três campos citados pela auditoria de 20/09 em "Falta de Sanitização e
+  Validação... NIF, Email ou Telefone" (NIF e email já tinham sido tratados no ponto 49).
+
+  Nova função pura em `src/utils.js`: `validarTelefone(telefone)` — 9 dígitos depois de remover
+  espaços/traços e um eventual indicativo (`+351` ou `00351`), a começar obrigatoriamente por 2, 3, 6, 7,
+  8 ou 9 (os únicos primeiros dígitos do plano de numeração português; nunca 0, 1, 4 ou 5). Não distingue
+  telemóvel de fixo/número especial — só apanha o erro real mais comum: um dígito a mais/a menos ou
+  trocado ao escrever ou copiar. Coberta por 5 testes unitários novos em `tests/utils.test.js`.
+
+  Em `modulos/aue.html`, `saveCurrent()` passa a validar os três campos (NIF, email, telefone) na mesma
+  passagem, cada um com o seu próprio aviso e classe `field-error`, mantendo a ordem já estabelecida no
+  ponto 49 (campo vazio → formato inválido) para as mensagens nunca se confundirem.
+
+  Novo bloco de teste e2e (extensão do bloco "1b" do ponto 49): confirma que um telefone em formato
+  inválido bloqueia a gravação (modal continua aberto, campo ganha `field-error`), sem completar uma
+  gravação real — termina em "Cancelar" para não afetar as contagens de pedidos usadas por verificações
+  mais adiante no mesmo ficheiro.
+
+  **Verificação.** 714/714 testes unitários e 526/526 verificações e2e (subindo de 709/523), sem nenhuma
+  regressão em mais nenhum módulo.
+  Ficheiros alterados: `src/utils.js`, `tests/utils.test.js`, `modulos/aue.html`,
+  `tests/e2e/modules/04-aue.mjs`.
+  Sincronizado na pasta `central multifarmácia` do PC do Ivo.
+
+- **Ponto 53 — fallback de arranque no ecrã principal (`index.html`/`src/app.js`).** Fase C do mesmo
+  plano de melhorias: a auditoria de 20/09 (§4.1, "Dependência Rígida de Ficheiros") assinalava que a app
+  falhava silenciosamente se `src/app.js` ou `assets/styles.css` não chegassem a carregar — um ecrã em
+  branco sem qualquer pista do que aconteceu, difícil de diagnosticar para quem não é técnico.
+  Confirmado por leitura direta de `index.html`/`src/app.js`: não existia nenhum sinal de "app pronta"
+  nem nenhum tratamento de erro ao nível do arranque — só o `try/catch` interno de `arrancarCentral()`,
+  que cobre falhas dos pedidos aos dados, não falhas do próprio script a carregar/executar.
+
+  Adicionado um pequeno script clássico (não-module, por isso corre mesmo que o módulo principal falhe) em
+  `index.html`, logo antes de `<script type="module" src="src/app.js">`: define `window.__centralAppReady
+  = false`, mostra um aviso visível ("A aplicação não carregou" + botão "Recarregar") caso (a) um
+  `<script>`/`<link>` falhe a carregar (capturado via `addEventListener("error", ..., true)`, já que estes
+  eventos não fazem "bubble"), (b) uma exceção não tratada ocorra durante a execução do módulo principal ou
+  de um dos seus imports internos (via `window.onerror`), ou (c) passem 8 segundos sem nenhum destes dois
+  eventos e sem o sinal de "pronto" — cobre também o caso de rede lenta/módulo preso sem erro explícito.
+  Em `src/app.js`, o sinal (`window.__centralAppReady = true`) é definido logo a seguir ao bloco de
+  arranque síncrono (mostrar o ecrã de login OU iniciar `arrancarCentral()`), sem esperar pelo
+  carregamento assíncrono dos dados — esse continua com o seu próprio tratamento (toast de erro) já
+  existente; este sinal cobre só o caso "ficheiro em falta/script partido".
+
+  Alteração deliberadamente pequena e sem qualquer mudança de comportamento no caminho feliz (só código
+  inerte que nunca corre a não ser que algo já esteja a falhar) — por isso não se justificou uma bateria
+  de testes e2e dedicada; a bateria completa (todos os 18 módulos, 526 verificações, incluindo o check
+  "nenhum erro de página/consola" presente em cada um) confirma que nenhum módulo regrediu com o script
+  novo presente.
+
+  **Verificação.** 714/714 testes unitários e 526/526 verificações e2e (mesmos números do ponto 52 — esta
+  alteração não tem testes próprios, só a confirmação de não-regressão acima).
+  Ficheiros alterados: `index.html`, `src/app.js`.
+  Sincronizado na pasta `central multifarmácia` do PC do Ivo.
+
+- **Ponto 54 — Painel Developer/Super-Admin (MVP: lista de farmácias, só leitura).** Fase D do plano de
+  melhorias (o Ivo pediu para avançar em todas as frentes de uma vez — "avança com tudo" — e este item foi
+  escolhido para arrancar primeiro por ser o único totalmente autónomo: não depende de nenhuma decisão de
+  negócio nem de nenhum serviço externo pago). Fecha o risco "CRÍTICO" da auditoria de 20/09: "Ausência de
+  Módulo Developer/Admin — inexistência de um portal restrito aos donos da Central".
+
+  **Não existe um papel de conta separado.** Uma conta/farmácia é super-admin quando o seu email consta da
+  variável de ambiente `SUPER_ADMIN_EMAILS` (lista separada por vírgulas, nova função `ehSuperAdmin(email)`
+  em `_lib/auth.js`) — nunca gravada em lado nenhum do código, definida uma única vez no Netlify (Site
+  settings → Environment variables), exatamente como já acontece com `AUTH_JWT_SECRET`. A MESMA conta que já
+  usas para entrar ganha acesso extra — sem login nem palavra-passe adicional, sem tabela de "admins" à
+  parte.
+
+  **Servidor.** `signup`/`login`/`me` em `netlify/functions/auth.js` passam a incluir `isSuperAdmin` (bool)
+  no token assinado e na resposta JSON. Nova rota `GET /api/auth/admin-farmacias` (coberta pelo redirect
+  já existente `/api/auth/*` no `netlify.toml`, sem precisar de nenhuma entrada nova): exige um token válido
+  com `isSuperAdmin: true` (401 sem token, 403 com token válido mas sem essa claim — nunca confia em nada
+  que não esteja assinado dentro do próprio token) e devolve a lista de todas as farmácias registadas
+  (nome, email, tenantId, data de criação), lida com `store.list({prefix:"conta:"})` sobre o mesmo blob
+  store de contas já existente (`central-saas-contas`) — nunca inclui `passwordHash`. O `.list()` do
+  Netlify Blobs precisou de ser acrescentado às duas implementações de teste (`tests/_fakeStore.js` e o
+  armazenamento em memória de `tests/e2e/local-server.mjs`), que até aqui só tinham `get`/`setJSON`/`set`/
+  `delete` — um subconjunto mínimo, só `{prefix}` → lista de `{key}`, suficiente para este uso.
+
+  **Cliente.** `src/authClient.js` grava `isSuperAdmin` no perfil local (`localStorage`) e expõe
+  `isSuperAdmin()` — só um sinal para a interface decidir se mostra o botão; nunca é o que autoriza o
+  acesso real, que o servidor volta sempre a verificar a partir da assinatura do token. Novo botão "Painel
+  Admin" na barra superior do shell (`index.html`/`src/app.js`), escondido por omissão (`hidden`) e só
+  revelado quando `isSuperAdmin()` é verdadeiro — precisou de uma regra CSS nova (`.btn-config[hidden]`)
+  porque a classe `.btn-config` já define `display:flex`, que por especificidade empatada com `[hidden]`
+  ganha por vir depois no ficheiro; sem essa regra o botão ficava sempre visível independentemente do
+  atributo `hidden`. Nova página autónoma `modulos/admin-central.html` (fora do sistema de "atalhos"/
+  serviços partilhado com as farmácias normais, de propósito, para nunca aparecer como cartão na grelha de
+  ninguém): pede `/api/auth/admin-farmacias` com o token da sessão e mostra a lista numa tabela simples,
+  com mensagens claras para 401 (sessão expirada) e 403 (conta sem permissões).
+
+  **Por agora, só leitura.** Fica deliberadamente fora desta primeira ronda (ver "Plano de trabalho"):
+  ferramentas de reparação de base de dados, monitor de erros em tempo real, gestão de atualizações e
+  parametrização de integrações externas — tudo o que o PDF descreve em "Detalhamento do Módulo
+  Developer/Donos da Central" além da visão geral de farmácias.
+
+  **Verificação.** 5 testes unitários novos em `tests/auth.test.js` (conta normal fica `isSuperAdmin:
+  false`; um email em `SUPER_ADMIN_EMAILS` fica `true`, sem distinguir maiúsculas; `admin-farmacias` sem
+  token → 401; com token sem a claim → 403; super-admin recebe a lista completa sem `passwordHash`) e 9
+  verificações e2e novas em `tests/e2e/modules/00-core.mjs` contra o servidor local real por HTTP a sério
+  + Playwright (incluindo o botão realmente escondido/visível consoante a conta, e a página
+  `admin-central.html` a carregar sem erros de consola). **719/719 testes unitários e 535/535 verificações
+  e2e** (subindo de 714/526), sem nenhuma regressão em mais nenhum módulo.
+  Ficheiros alterados: `netlify/functions/_lib/auth.js`, `netlify/functions/auth.js`,
+  `tests/_fakeStore.js`, `tests/e2e/local-server.mjs`, `tests/auth.test.js`, `src/authClient.js`,
+  `index.html`, `src/app.js`, `assets/styles.css`, `tests/e2e/modules/00-core.mjs`.
+  Ficheiro novo: `modulos/admin-central.html`.
+  Sincronizado na pasta `central multifarmácia` do PC do Ivo.
+
 ## Plano de trabalho
 
 - ~~Desenhar o modelo de dados multi-farmácia sobre Netlify Blobs (tenants, sessões JWT, namespacing).~~ Feito.
@@ -2678,6 +3174,43 @@ sem nenhuma API externa de IA.
 - Resolver o bloqueio de implantação (publicar no Netlify) — pergunta em aberto, ver "Ainda por fazer".
 - Empacotamento para as 3 lojas (Capacitor + PWABuilder), incluindo requisitos "de bastidores":
   contas de developer (Apple/Google/Microsoft), política de privacidade, RGPD.
+- ~~Investigar a queixa "a FARMA não consegue de facto fazer as tarefas" (auditoria pedida pelo Ivo,
+  ver ponto 46) e avançar a Fase A (ligar o mini-chat e o módulo completo ao motor de ações, sem
+  depender da IA local opcional) + Fase B (testes e2e reais do percurso completo de uma ação) do plano
+  de melhorias resultante.~~ Feito (2026-09-20) — ver ponto 46.
+- ~~Fase C, item AUE: validar o formato de NIF/email antes de gravar (até aqui só se confirmava que não
+  estavam vazios).~~ Feito (2026-09-23) — ver ponto 49.
+- ~~Fase C, item Devoluções a Armazenistas: corrigir os ~0,5% de designações de produto com uma palavra
+  duplicada por engano no JSON interno.~~ Feito (2026-09-23) — ver ponto 50. O sub-item do tamanho do
+  JSON (2,24 MB, `JSON.parse` síncrono no arranque) foi avaliado mas adiado deliberadamente — ver ponto
+  50 para a análise completa e a justificação do adiamento.
+- CDNs sem SRI (Fase C): script `scripts/aplicar-sri-cdn.mjs` já escrito, verificado em modo `--list` e
+  testado quanto a idempotência, mas nunca correu com `--write` — este sandbox de desenvolvimento não
+  tem acesso real à internet nesta sessão (confirmado: até o registo npm e o pypi respondem
+  "host_not_allowed"), e o script deliberadamente nunca inventa um hash sem o ficheiro real. Precisa de
+  correr `node scripts/aplicar-sri-cdn.mjs --write` numa máquina com internet a sério (ex. o PC do Ivo,
+  depois de sincronizado) ou numa sessão futura com rede de saída disponível.
+- ~~`/api/data` sem bloqueio otimista (Fase C).~~ Feito (2026-09-23) — ver ponto 51.
+- Avaliar verificação de email no onboarding (Fase C) — o Ivo pediu para avançar (2026-09-23); ideia
+  proposta: reutilizar o mesmo mecanismo já usado em AUE/Manipulados (Web App do Google Apps Script, sem
+  custo, sem chave paga), mas corrido a partir do servidor e configurado uma vez para a Central toda — por
+  implementar, precisa que o Ivo crie um Apps Script dedicado e dê o URL como variável de ambiente.
+- Fase D (maturidade SaaS: password/admin/faturação/RGPD) — o Ivo pediu para avançar em todas as frentes
+  (2026-09-23, "avança com tudo"). Ordem escolhida: Painel Developer/Super-Admin primeiro (sem dependências
+  externas) → recuperação de password (reutiliza o mesmo mecanismo de email do item acima) → faturação e
+  RGPD ficam deliberadamente por agora, à espera de uma decisão de negócio real do Ivo sobre vender a
+  terceiros (construir isso sem essa decisão seria trabalho especulativo).
+  - ~~Painel Developer/Super-Admin — MVP de lista de farmácias, só leitura.~~ Feito (2026-09-23) — ver
+    ponto 54. Ferramentas de manutenção/monitor de erros/gestão de atualizações ficam para uma próxima
+    ronda.
+  - Recuperação de password — por implementar; depende do mesmo Apps Script do item de onboarding acima.
+  - Faturação (Stripe/MB WAY) e conformidade RGPD — adiadas, ver acima.
+  Ver `plano-melhorias-pendentes-2026-09.md` no projeto para o detalhe completo de Fases C e D.
+- ~~Bug na impressão de Bolachas Promocionais (queixa direta do Ivo).~~ Feito (2026-09-23) — ver
+  ponto 47: "Imprimir esta bolacha" saía com o texto/imagens fora do sítio; corrigido e coberto por um
+  teste e2e novo.
+- ~~Bolachas: opção de várias caixas de texto independentes, com tamanho e cor de letra próprios em
+  cada uma (pedido direto do Ivo).~~ Feito (2026-09-23) — ver ponto 48.
 - Fase 4 do plano "FARMA aprende a pensar" (ponto 41/42) — pesquisa pontual na internet, só informação
   pública (ex.: preço/princípio ativo de um medicamento), nunca dados de utentes, nunca uma IA externa.
   Candidato identificado: `transparencia.sns.gov.pt` (Opendatasoft, plausivelmente com CORS) — mas este
@@ -2694,3 +3227,48 @@ sem nenhuma API externa de IA.
   implementação real a decidir numa sessão futura, nunca automática.
 - Traduzir a nova aba "Aprender" (ponto 43) quando a ronda de tradução dos 14 módulos individuais (ver
   item acima, ponto 24) avançar — construída só em português, como o resto de `farma-ia.html` até agora.
+- ~~`modulos/devolucao-frio.html` chama a API da Anthropic diretamente do browser, violando a regra
+  absoluta ponto 29.~~ Resolvido (2026-09-20) — ver ponto 45: o Ivo escolheu remover por completo o
+  auto-preenchimento por IA (não substituir por um backend/proxy, que não resolveria a violação da regra).
+  O preenchimento manual dos campos continua a funcionar exatamente como antes.
+- Rever com o Ivo, item a item, as restantes conclusões do relatório de auditoria PDF de 20/09/2026 — o
+  relatório não reflete a autenticação/JWT/multi-tenancy já implementada (`netlify/functions/auth.js`,
+  `authClient.js`, `tenantId` assinado no token), pelo que algumas das suas conclusões de "SaaS Readiness"
+  (secção 5 do PDF) já estavam desatualizadas e precisaram de ser confirmadas uma a uma, não aceites em
+  bloco. Revisão feita em 2026-09-23, item a item:
+  - ~~Falta de sanitização/validação em formulários (NIF, email, telefone do AUE).~~ Feito — NIF/email no
+    ponto 49, telefone no ponto 52. Os 3 campos citados pela auditoria estão cobertos.
+  - ~~Concorrência na rota monolítica `/api/data` sem versionamento.~~ Feito — ver ponto 51 (bloqueio
+    otimista por revisão). Nota: a auditoria (Fase 2 do roteiro) sugeria ir mais longe — separar
+    `/api/data` em endpoints por recurso (`/api/aue`, `/api/catalogo`, etc.) com ETag/If-Match — o ponto 51
+    optou deliberadamente por uma versão mais leve (um único endpoint, um único número de revisão por
+    farmácia) para resolver a mesma corrida de dados com muito menos risco de regressão; a granularização
+    completa fica como possível trabalho futuro, não incluída aqui.
+  - ~~Dados corrompidos no JSON interno de `devolucoes-armazenistas.html`.~~ Feito — ver ponto 50.
+  - ~~Dependência Rígida de Ficheiros / falta de bootstrap de fallback no shell.~~ Feito — ver ponto 53.
+  - Email Apps Script em modo `no-cors` "mascara" o estatuto real do envio — investigado: é uma limitação
+    do próprio browser (modo `no-cors` nunca expõe o HTTP status real a JavaScript, por desenho de
+    segurança), não um bug do código. O código já trata isto da forma mais honesta possível do lado do
+    cliente: mensagem explícita a pedir para confirmar na pasta "Enviados", e `.catch()` para falhas de
+    rede totais. Só ficaria mais preciso com uma mudança do lado do Google Apps Script do Ivo (para
+    responder com CORS real em vez de `no-cors`), fora do alcance deste código. Sem ação adicional prevista
+    aqui.
+  - Catálogo sem paginação real / `innerHTML` dinâmico — investigado: `catalogo-produtos.html` já limita
+    os resultados a 200 por pesquisa (não é paginação página-a-página como a auditoria descreve
+    literalmente, mas cumpre a mesma função de não tentar renderizar os 29 mil produtos de uma vez) e todo
+    o HTML dinâmico usa `escapeHtml()` antes de entrar no DOM — não é o risco de injeção direta que o
+    termo genérico "innerHTML dinâmico" sugeria. Sem vulnerabilidade real confirmada como o código está
+    hoje; sem ação adicional prevista aqui.
+  - Memory leaks no conversor de PDF com documentos grandes (>20 MB) — ainda por investigar/confirmar.
+  - Fragilidade da extração de PDF por coordenadas Y (tabelas complexas/digitalizações rodadas) — ainda por
+    investigar/confirmar.
+  - Camada de negócio SaaS em falta (recuperação de password, painel Developer/Super-Admin, faturação,
+    multi-tenancy — já implementada, apenas não refletida no relatório —, onboarding com verificação de
+    email, RGPD) — mapeada para a "Fase D" abaixo; por avançar, condicional a decisões do Ivo.
+  - Itens do roteiro (Fases 1-3 do PDF) ainda não avaliados individualmente com o Ivo: rate limiting no
+    login/signup, migrar tokens de autenticação de `localStorage` para cookies `HttpOnly`
+    (`SameSite=Strict`/`Secure`), auditoria de acessibilidade WCAG, suíte de testes com Playwright (já
+    existe uma suíte e2e própria com 526 verificações — por confirmar com o Ivo se cobre o que ele
+    considera necessário ou se quer especificamente Playwright), centralização de i18n para os 14 módulos
+    (ponto 24 já fez isto no shell central; os módulos individuais ficaram para uma ronda dedicada, ainda
+    por agendar).
