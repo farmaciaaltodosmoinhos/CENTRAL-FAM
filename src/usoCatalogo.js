@@ -206,7 +206,6 @@ export const TAREFAS_CATALOGO = [
 
   // ------------------------------------------------------- Devolução de Frio
   { modulo: "devolucao-frio", tarefaId: "gerar_declaracao", nome: "Gerar declaração de devolução de frio", tempoManualSeg: 480, tempoCentralSeg: 90 },
-  { modulo: "devolucao-frio", tarefaId: "auto_preencher_ia", nome: "Auto-preenchimento de declaração via IA (upload de ficheiro)", tempoManualSeg: 420, tempoCentralSeg: 45 },
 
   // --------------------------------------------------- Mapa Cardiovascular
   { modulo: "mapa-cardiovascular", tarefaId: "gerar_mapa", nome: "Gerar mapa/consentimento MAPA 48h", tempoManualSeg: 600, tempoCentralSeg: 120 },

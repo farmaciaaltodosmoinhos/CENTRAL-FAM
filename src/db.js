@@ -39,6 +39,64 @@ const TAMANHO_PEDACO = 2 * 1024 * 1024;
 function metaKey(key) { return `${key}:meta`; }
 function partKey(key, i) { return `${key}:part:${i}`; }
 
+/**
+ * Ponto 57 (perda de dados em gravações concorrentes — queixa direta do
+ * Ivo: "crio um serviço, vejo-o durante uns 10 segundos e depois
+ * desaparece"): `putAll()` recebia sempre o array COMPLETO de serviços/
+ * categorias tal como este separador/computador o via localmente, e no
+ * caminho de nova tentativa do `persist()` (ver acima, ponto 50) o
+ * substituía diretamente pelo estado fresco relido do servidor —
+ * `reaplicarMudancas(cache)` fazia `cache.servicos = items`. Como `items` é
+ * um instantâneo tirado UMA VEZ no momento da chamada (o array local deste
+ * separador, que nesse instante já não sabia nada de uma adição/edição feita
+ * entretanto por OUTRO separador/computador), essa substituição às cegas
+ * apagava silenciosamente qualquer coisa que esse outro tivesse acabado de
+ * gravar — mesmo sendo um serviço completamente diferente, nunca tocado por
+ * esta gravação. Isto é exatamente o que causava um serviço recém-criado a
+ * desaparecer minutos depois: bastava OUTRO computador da farmácia gravar
+ * qualquer coisa (até algo tão trivial como marcar um favorito) e entrar em
+ * conflito de revisão (409) para essa gravação, ao repetir a tentativa,
+ * varrer o serviço novo.
+ *
+ * `setConfig()`, ao lado, nunca teve este problema: o seu `aplicar` faz um
+ * MERGE (`{ ...cache.config, [key]: value }`), nunca uma substituição total
+ * — reaplicado sobre o estado fresco, só muda a chave que esta chamada quis
+ * mesmo mudar. `calcularDiff`/`aplicarDiff` abaixo dão a `putAll` o mesmo
+ * comportamento: em vez de substituir o array inteiro, calculam (por `id`)
+ * exatamente o que ESTA chamada acrescentou, mudou ou removeu — comparando
+ * o array pedido (`depois`) com o último estado conhecido ANTES desta
+ * chamada (`antes`, o `cache` tal como estava mesmo antes de aplicar esta
+ * gravação) — e reaplicam só essa diferença sobre o que quer que o servidor
+ * tenha entretanto, preservando o que outro separador tiver acrescentado,
+ * mudado ou removido no intervalo. Uma edição feita aqui e no servidor ao
+ * MESMO id ao mesmo tempo continua "o último a gravar ganha" (só para esse
+ * id) — não há forma de reconciliar duas edições diferentes ao mesmo campo
+ * sem um utilizador a decidir; o que isto corrige é o caso, de longe mais
+ * comum numa farmácia com vários postos, de dois separadores a mexerem em
+ * serviços DIFERENTES ao mesmo tempo.
+ */
+function calcularDiff(antes, depois) {
+  const antesPorId = new Map((antes || []).map(item => [item.id, item]));
+  const depoisPorId = new Map((depois || []).map(item => [item.id, item]));
+  const adicionados = [];
+  const atualizados = [];
+  for (const [id, item] of depoisPorId) {
+    if (!antesPorId.has(id)) { adicionados.push(item); continue; }
+    if (JSON.stringify(antesPorId.get(id)) !== JSON.stringify(item)) atualizados.push(item);
+  }
+  const removidosIds = [];
+  for (const id of antesPorId.keys()) if (!depoisPorId.has(id)) removidosIds.push(id);
+  return { adicionados, atualizados, removidosIds };
+}
+
+function aplicarDiff(lista, diff) {
+  const porId = new Map((lista || []).map(item => [item.id, item]));
+  for (const id of diff.removidosIds) porId.delete(id);
+  for (const item of diff.adicionados) porId.set(item.id, item);
+  for (const item of diff.atualizados) porId.set(item.id, item);
+  return [...porId.values()];
+}
+
 let cache = null;
 let cacheLoaded = false;
 // Ponto 50 (bloqueio otimista): revisão do estado tal como o servidor a
@@ -125,7 +183,16 @@ export function makeDataStore() {
     },
     async putAll(storeName, items) {
       await ensureLoaded();
-      const aplicar = (c) => { if (storeName === "servicos") c.servicos = items; else if (storeName === "categorias") c.categorias = items; };
+      // Ponto 57: a diferença é calculada UMA VEZ aqui, contra o estado tal
+      // como estava mesmo antes desta chamada — e reaplicada (nunca
+      // substituída às cegas) tanto na primeira tentativa como, sobre o
+      // estado fresco relido, em cada nova tentativa depois de um 409.
+      const atual = storeName === "servicos" ? cache.servicos : storeName === "categorias" ? cache.categorias : [];
+      const diff = calcularDiff(atual, items);
+      const aplicar = (c) => {
+        if (storeName === "servicos") c.servicos = aplicarDiff(c.servicos, diff);
+        else if (storeName === "categorias") c.categorias = aplicarDiff(c.categorias, diff);
+      };
       aplicar(cache);
       await persist(aplicar);
     },
@@ -337,6 +404,10 @@ export function __resetCacheForTests() {
   cache = null;
   cacheLoaded = false;
 }
+
+/** Ponto 57 — expostas só para teste unitário direto do merge por diferença (ver tests/db.test.js). */
+export function __calcularDiffParaTeste(antes, depois) { return calcularDiff(antes, depois); }
+export function __aplicarDiffParaTeste(lista, diff) { return aplicarDiff(lista, diff); }
 
 /**
  * Prepara o estado inicial do servidor, caso ainda esteja vazio:
