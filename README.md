@@ -1,53 +1,42 @@
-# Central Operacional — versão multi-farmácia (SaaS)
+# Testes end-to-end (bateria completa)
 
-Bifurcação da central de produção de uma farmácia (`central-operacional-farmacia`), transformada
-num produto para **várias farmácias**, cada uma com a sua própria conta e os seus próprios dados,
-isolados das restantes. O objetivo final é publicar isto na Microsoft Store, na Google Play e na
-App Store a partir deste mesmo código-fonte web (via Capacitor para iOS/Android e PWABuilder para
-Windows) — essa parte ainda não está feita, ver "Próximos passos" no fim.
+Diferente dos testes em `tests/*.test.js` (unitários, isolados por função),
+esta pasta corre a aplicação real — Central + módulos — contra as funções
+reais do Netlify (`netlify/functions/*.js`), servidas por um pequeno servidor
+local que substitui o Netlify Blobs por um mapa em memória. Não precisa da
+`netlify-cli` nem de acesso à internet.
 
-Mantém a arquitetura da central original — front-end estático sem passo de build, motor de Virtual
-DOM próprio, store imutável, Netlify Functions + Netlify Blobs como backend — e acrescenta uma
-camada de autenticação e isolamento por farmácia.
-
-## O que mudou em relação à central de uma farmácia só
-
-- **Autenticação** (`netlify/functions/auth.js` + `netlify/functions/_lib/auth.js`): cada farmácia
-  cria uma conta (`POST /api/auth/signup`: nome da farmácia, email, palavra-passe) ou inicia sessão
-  (`POST /api/auth/login`). A password é guardada com hash `scrypt` (nunca em texto simples). A
-  sessão é um token assinado (HMAC-SHA256, formato JWT), válido por 30 dias, guardado no browser
-  (`localStorage`, ver `src/authClient.js`) e enviado em `Authorization: Bearer <token>` em cada
-  pedido à API.
-- **Isolamento de dados**: `netlify/functions/data.js` e `netlify/functions/asset.js` já não confiam
-  em nenhum `tenantId` vindo do pedido — extraem-no sempre do token validado no servidor, e usam-no
-  para prefixar as chaves no Netlify Blobs (`estado:<tenantId>`, `asset:<tenantId>:<key>`). Uma
-  farmácia nunca consegue ler nem escrever os dados de outra.
-- **Ecrã de entrada** (`index.html` + `src/app.js`): a app só arranca (`actions.iniciar()`) depois de
-  autenticado; sem sessão válida mostra o ecrã de login/criar conta.
-
-## Configuração necessária no Netlify (por fazer antes do primeiro deploy)
-
-Defina a variável de ambiente **`AUTH_JWT_SECRET`** em Site settings → Environment variables — uma
-string aleatória longa (ex.: `openssl rand -hex 32`). Sem ela, as funções de autenticação recusam-se
-a arrancar (por segurança, nunca caem para um segredo previsível). É a única variável necessária —
-o `@netlify/blobs` continua a detetar o contexto do site automaticamente.
-
-## Testes
+## Como correr
 
 ```bash
-npm install
-npm test
+# 1. arranca o servidor local (funções reais + blobs em memória), numa aba
+node tests/e2e/local-server.mjs 8888 .
+
+# 2. noutra aba, corre a bateria de testes
+node tests/e2e/battery.mjs
 ```
 
-`tests/auth.test.js`, `tests/data.test.js` e `tests/asset.test.js` cobrem: criação de conta, login,
-validação de sessão, e — o mais importante — que uma farmácia nunca vê nem apaga os dados de outra
-(testado diretamente contra as chaves gravadas na store simulada).
+Precisa do Playwright instalado (`npm i -D playwright` ou equivalente) e do
+Chromium correspondente — define `PLAYWRIGHT_CHROMIUM_PATH` se o binário não
+estiver no caminho padrão do Playwright.
 
-## Próximos passos
+## O que cobre
 
-1. Ir integrando os módulos das farmácias (a primeira peça em curso: "Pedidos de Manipulados").
-2. Revisão final de harmonização (design, navegação) quando todos os módulos estiverem integrados.
-3. Manifest PWA + service worker ajustado para instalação.
-4. Empacotamento: Capacitor (iOS/Android) e PWABuilder (Windows/Microsoft Store).
-5. Aspetos "de bastidores" para publicar nas lojas: contas de developer (Apple/Google/Microsoft),
-   política de privacidade, conformidade RGPD, modelo de preços/subscrição por farmácia.
+- Autenticação real (signup/login) e isolamento entre farmácias.
+- O bug de desempenho do logótipo (ver `src/actions.js`/`src/db.js` e a nota
+  em cada `modulos/*.html`): confirma que o logótipo deixou de viajar dentro
+  de `/api/data` (medindo o tamanho real do payload) e que farmácias antigas
+  (logótipo só em `config.logo`, de antes desta correção) continuam a
+  funcionar e migram sozinhas na primeira gravação de qualquer módulo.
+- Todos os 13 módulos carregam sem erros de consola/página em 3 larguras
+  (390 telemóvel / 800 tablet / 1440 desktop).
+- Um fluxo funcional real (criar um utente em PIM) para apanhar regressões
+  do género "bug de escopo do draft" (variável de módulo mutada por um
+  `oninput` inline, que corre no escopo global — ver histórico de commits).
+
+## Quando correr
+
+Sempre que se mexer em `netlify/functions/*.js`, `src/db.js`, `src/actions.js`,
+`assets/module-chrome.js`, ou na lógica de gravação/carregamento de qualquer
+`modulos/*.html` — esta bateria teria apanhado a maioria dos bugs reais
+encontrados nesta base de código até agora.
