@@ -3084,6 +3084,110 @@ sem nenhuma API externa de IA.
   Ficheiro novo: `modulos/admin-central.html`.
   Sincronizado na pasta `central multifarmácia` do PC do Ivo.
 
+- **Ponto 55 — sincronização lenta e gravações perdidas: cada gravação enviava o estado inteiro da
+  farmácia.** Queixa direta do Ivo (2026-09-23): "A central está com dificuldade de sincronização lenta o
+  que faz com que alterações às vezes não sejam guardadas detecta o problema e corrige, torna a central o
+  mais rápida e fluida possível".
+
+  **Causa raiz.** Os 7 módulos com gravação própria (`aue.html`, `pim.html`, `manipulados.html`,
+  `documentos.html`, `devolucoes-armazenistas.html`, `gabinete.html`, `stocks.html`) seguiam todos o mesmo
+  padrão: antes de gravar, faziam um GET a `/api/data` a buscar o estado COMPLETO da farmácia (todos os
+  módulos), e depois um PUT a devolver esse estado inteiro com `...estadoAtual` espalhado, só para mudar a
+  fatia de UM módulo. Isto acontecia porque a validação antiga de `netlify/functions/data.js` exigia sempre
+  `servicos` e `categorias` como arrays (400 se não viessem), obrigando os clientes a incluir sempre a
+  forma completa do estado — mesmo o merge do servidor já sendo, por baixo, um simples
+  `{...atual, ...body}` ao nível das chaves de topo, que não precisa disto. Resultado: à medida que os
+  dados de uma farmácia crescem em QUALQUER módulo, uma gravação de um campo só num módulo pequeno
+  (ex. Stocks) fica cada vez mais lenta — porque tem de transportar também todos os outros módulos — e um
+  pedido mais lento tem mais probabilidade de nunca chegar a terminar (separador fechado, navegação para
+  outro sítio, falha momentânea de rede) antes de o utilizador ver confirmação. Isto explica tanto a lentidão
+  como as gravações que às vezes desaparecem.
+
+  **Servidor.** `netlify/functions/data.js`: `servicos`, `categorias` e `config` passam a opcionais na
+  validação do PUT (só se validado o tipo quando vêm, nunca exigido que venham) e o merge simplificado para
+  `{ ...atual, ...body }` puro (sem forçar mais `config: body.config || {}`, que antes apagava a
+  configuração sempre que um cliente a omitisse).
+
+  **Clientes (7 módulos).** Cada `gravarXxx()` passa a enviar só `{ <módulo>: novoValor }` no PUT — nunca
+  mais o estado inteiro. Exceção deliberada e pontual: se `estadoAtual.config.logo` ainda existir (contas
+  "antigas", de antes da migração de logótipos para o armazém de ficheiros), o módulo continua a incluir
+  `config` sem o `logo` nessa gravação — para não perder a limpeza automática de uma vez que já existia.
+  Como isto só se aplica enquanto `config.logo` estiver presente (raro, e autolimitado — desaparece após a
+  primeira gravação de qualquer módulo dessa conta), o custo extra só é pago pelas contas antigas ainda por
+  migrar, nunca pelo caso normal.
+
+  **Impacto medido.** Simulação com dados realistas acumulados (≈136 KB de estado: 400 pedidos AUE, 300
+  manipulados, 150 declarações, 200 itens de gabinete, 100 stocks errados, 50 regras de devolução a
+  armazenistas) mostrou uma gravação nova de AUE a passar de ≈136 KB por pedido (antes) para ≈57 KB
+  (depois) — uma redução de 58% neste cenário. Em farmácias onde o módulo a gravar é pequeno face ao resto
+  dos dados acumulados (o caso mais comum), a redução real tende a ser maior.
+
+  **Verificação.** `tests/data.test.js` reescrito e ampliado: validação testa agora "aceita corpo parcial",
+  "rejeita tipo errado" para `servicos`/`categorias`/`config` individualmente, e um bloco novo dedicado
+  ("gravação parcial, só a fatia do módulo") com 3 testes — preservação de dados ao gravar só uma fatia,
+  coexistência de várias fatias gravadas em PUTs sucessivos, e compatibilidade do bloqueio otimista
+  (ponto 51) com corpos parciais. Também confirmado, por e2e já existente, que a limpeza de `config.logo`
+  em contas antigas continua a funcionar exatamente como antes. **725/725 testes unitários e 535/535
+  verificações e2e**, sem nenhuma regressão.
+  Ficheiros alterados: `netlify/functions/data.js`, `tests/data.test.js`, `modulos/aue.html`,
+  `modulos/pim.html`, `modulos/manipulados.html`, `modulos/documentos.html`,
+  `modulos/devolucoes-armazenistas.html`, `modulos/gabinete.html`, `modulos/stocks.html`.
+  Sincronizado na pasta `central multifarmácia` do PC do Ivo.
+
+- **Ponto 56 — mais 3 melhorias de rapidez, pedidas pelo Ivo a seguir ao ponto 55 ("que mais podemos
+  fazer para melhorar a rapidez e fluidez da central").** Investigação dirigida a encontrar o que ainda
+  pesava, por ordem de risco (do mais seguro para o maior), com o Ivo a confirmar avançar com os 3.
+
+  **1. `Cache-Control` em falta nos módulos (baixo risco).** De todos os grupos de ficheiros da app,
+  `/modulos/*` era o único sem `Cache-Control` próprio no `netlify.toml` — ficava ao critério do
+  comportamento por omissão do Netlify, sem a revalidação condicional (ETag/304) que `/src/*` e
+  `/assets/*` já tinham. Como alguns módulos vão até vários MB, cada reabertura pagava sempre o custo de
+  retransmitir o ficheiro inteiro. Acrescentado `Cache-Control: public, max-age=0, must-revalidate`
+  (igual ao `index.html`) — o Service Worker continua a forçar sempre uma ida à rede para documentos
+  (estratégia "network-first", nunca serve uma versão desatualizada), mas agora recebe um 304 em vez do
+  ficheiro inteiro quando nada mudou.
+
+  **2. GET também só a fatia (Fase 2 do ponto 55, mesmo risco baixo).** O ponto 55 encolheu o PUT, mas
+  cada `fetchEstado()` continuava a fazer um GET do estado INTEIRO — a cada gravação, a cada arranque de
+  módulo, e na atualização periódica de fundo da Central a cada 25s (`recarregarDoServidor()`, a chamada
+  mais frequente de toda a app). `GET /api/data` aceita agora `?campos=chave1,chave2` (nomes separados por
+  vírgula) e devolve só essas chaves de topo — sem o parâmetro, continua a devolver o estado completo tal
+  como sempre (nenhum consumidor mais simples, ex. `catalogo-produtos.html`/`devolucao-frio.html`, precisa
+  de mudar nada). Aplicado aos 7 módulos que gravam (cada um só pede a sua própria fatia + `config`, para a
+  marca/nome da farmácia e a limpeza do logótipo legado) e ao shell principal (`src/db.js`, que só lê
+  `servicos`/`categorias`/`config` — nunca os módulos). Caso especial: `documentos.html` tem um segundo
+  ponto de leitura (`pullMedsFromPim()`, que traz medicação do PIM para uma declaração) — `fetchEstado()`
+  passou a aceitar um parâmetro de chaves extra (por omissão `['documentos']`, ali chamado com `['pim']`),
+  `config` incluído sempre em qualquer chamada. `getEstadoCompleto()` (auto-manutenção/cópias de segurança,
+  em `src/db.js`) continua deliberadamente a pedir o estado completo — precisa mesmo de tudo.
+
+  **3. Bloco de 2,24 MB embutido em `devolucoes-armazenistas.html` (maior risco, feito por último).** Este
+  módulo trazia os dados de referência partilhados (regras de devolução por armazenista, ~29 mil produtos
+  para correspondência com detentor de AIM — iguais para todas as farmácias, nunca personalizados) embutidos
+  num `<script type="application/json">` inline, com `JSON.parse` síncrono logo ao abrir — 2,24 MB em 2,35 MB
+  de ficheiro (96% do total), de longe o maior ficheiro de toda a app (o 2º maior, `mapa-cardiovascular.html`,
+  tem só 597 KB). Já tinha sido identificado no ponto 50 e deliberadamente adiado por ser mais arriscado.
+  Movido para `assets/dados-devolucoes-armazenistas.json` — mesmo padrão já usado para o catálogo de
+  produtos (ver ponto/`src/produtosCatalogo.js`): ficheiro estático, servido e cacheado à parte pelo
+  CDN/browser (`Cache-Control` de 600s, igual a `/assets/*`), em vez de reembutido por inteiro a cada
+  abertura do módulo. A função principal do módulo (uma só função autoexecutável, confirmado por leitura
+  linha a linha antes de mexer) passou de síncrona a `async`, com um único `await fetch(...)` no topo a
+  substituir o `JSON.parse` — o resto do ficheiro corre exatamente pela mesma ordem de sempre, só que depois
+  desse `await`; nenhuma outra mudança de lógica. Acrescentado também um aviso visível (antes não podia
+  falhar, por estar sempre embutido; agora é um pedido de rede à parte) se este ficheiro não carregar.
+  `devolucoes-armazenistas.html` passa de 2,35 MB para 97 KB — alinhado com o tamanho dos outros módulos.
+
+  **Verificação.** `tests/data.test.js`: novo bloco "leitura parcial, só as chaves pedidas" com 5 testes
+  (devolve só as chaves pedidas; uma chave inexistente fica simplesmente de fora, nunca um erro;
+  compatibilidade sem o parâmetro; o cabeçalho `X-Estado-Rev` continua sempre presente; isolamento entre
+  farmácias também na leitura parcial). **730/730 testes unitários e 535/535 verificações e2e** (incluindo
+  as 39 verificações próprias de Devoluções a Armazenistas), sem nenhuma regressão em mais nenhum módulo.
+  Ficheiros alterados: `netlify.toml`, `netlify/functions/data.js`, `tests/data.test.js`, `src/db.js`,
+  `modulos/aue.html`, `modulos/pim.html`, `modulos/manipulados.html`, `modulos/documentos.html`,
+  `modulos/gabinete.html`, `modulos/stocks.html`, `modulos/devolucoes-armazenistas.html`.
+  Ficheiro novo: `assets/dados-devolucoes-armazenistas.json`.
+  Sincronizado na pasta `central multifarmácia` do PC do Ivo.
+
 ## Plano de trabalho
 
 - ~~Desenhar o modelo de dados multi-farmácia sobre Netlify Blobs (tenants, sessões JWT, namespacing).~~ Feito.
@@ -3211,6 +3315,16 @@ sem nenhuma API externa de IA.
   teste e2e novo.
 - ~~Bolachas: opção de várias caixas de texto independentes, com tamanho e cor de letra próprios em
   cada uma (pedido direto do Ivo).~~ Feito (2026-09-23) — ver ponto 48.
+- ~~Sincronização lenta / gravações às vezes perdidas (queixa direta do Ivo).~~ Feito (2026-09-23) — ver
+  ponto 55: cada gravação enviava o estado inteiro da farmácia em vez de só a sua própria fatia; corrigido
+  no servidor e nos 7 módulos com gravação própria.
+- ~~"Que mais podemos fazer para melhorar a rapidez e fluidez da central?" (pedido direto do Ivo, a seguir
+  ao ponto 55).~~ Feito (2026-09-24) — ver ponto 56: `Cache-Control` em falta nos módulos, o GET também só a
+  fatia (Fase 2 do ponto 55), e o bloco de 2,24 MB de Devoluções a Armazenistas movido para um ficheiro à
+  parte. Fica por avaliar, numa próxima ronda (não pedido nem investigado ainda): os 5 módulos mais simples
+  que só leem `config` do estado partilhado (`catalogo-produtos.html`, `devolucao-frio.html`,
+  `mapa-cardiovascular.html`, `medela.html`, `reservas.html`) e `src/manutencao.js`/`src/usoLeitura.js` —
+  não tocados nesta ronda, deliberadamente fora do âmbito acordado com o Ivo.
 - Fase 4 do plano "FARMA aprende a pensar" (ponto 41/42) — pesquisa pontual na internet, só informação
   pública (ex.: preço/princípio ativo de um medicamento), nunca dados de utentes, nunca uma IA externa.
   Candidato identificado: `transparencia.sns.gov.pt` (Opendatasoft, plausivelmente com CORS) — mas este

@@ -107,9 +107,20 @@
 # "X-Frame-Options: DENY" acima (pensados para o resto do site, que nunca é
 # suposto ser enquadrado por ninguém) bloqueariam. Aqui é só permitido serem
 # enquadrados pela própria origem — nunca por um site de terceiros.
+#
+# Ponto 56: até aqui, "/modulos/*" era o único grupo de ficheiros da app sem
+# Cache-Control próprio — caía no comportamento por omissão do Netlify, sem a
+# revalidação condicional (ETag/304) que "/src/*" e "/assets/*" já tinham. Como
+# alguns módulos vão até 2+ MB (ex. devolucoes-armazenistas.html), cada reabertura
+# pagava sempre o custo de retransmitir o ficheiro inteiro. "max-age=0,
+# must-revalidate" (igual ao index.html) garante que o Service Worker (que já
+# força sempre uma ida à rede para documentos — estratégia "network-first",
+# ver sw.js) recebe um 304 em vez do ficheiro inteiro quando nada mudou, sem
+# nunca arriscar servir uma versão desatualizada de um módulo.
 [[headers]]
   for = "/modulos/*"
   [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
     X-Frame-Options = "SAMEORIGIN"
     # frame-src 'self' data: blob: — os módulos (ex.: Documentos) pré-visualizam
     # PDFs e imagens carregados pela farmácia dentro de um <iframe src="data:...">
