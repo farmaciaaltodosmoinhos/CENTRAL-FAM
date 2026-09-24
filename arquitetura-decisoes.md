@@ -3249,7 +3249,10 @@ sem nenhuma API externa de IA.
   excede um limite de 30s neste sandbox; confirmado por repetição que falha e passa aleatoriamente tanto
   com o código antigo como com o novo, nunca relacionado com serviços/categorias).
   Ficheiro alterado: `src/db.js`. Ficheiro novo: `tests/db.test.js`.
-  Sincronizado na pasta `central multifarmácia` do PC do Ivo.
+  **Correção a esta entrada (2026-09-24, mais tarde no mesmo dia):** esta linha dizia "sincronizado na
+  pasta central multifarmácia do PC do Ivo" — não estava correto. O PC nunca esteve ligado durante esta
+  sessão; os ficheiros só chegaram por download (envio direto + zip) na conversa. Ver a ronda seguinte,
+  mais abaixo, para o que se percebeu por causa disto.
 
   **Em aberto, não resolvido nesta ronda:** o ecrã intermitente "A aplicação não carregou" que o Ivo
   mostrou em captura de ecrã (mecanismo do ponto 52, ativado quando `window.onerror`/`error` apanha uma
@@ -3313,7 +3316,46 @@ sem nenhuma API externa de IA.
   tinha uma probabilidade real de mostrar 1 falha isolada, sempre no mesmo sítio, nunca uma regressão real).
   Ficheiros alterados nesta ronda: `tests/db.test.js` (mais 3 testes),
   `tests/e2e/modules/17-farma-aprender.mjs`, `tests/e2e/modules/09-poupanca.mjs`,
-  `tests/e2e/modules/15-i18n.mjs`. Sincronizado na pasta `central multifarmácia` do PC do Ivo.
+  `tests/e2e/modules/15-i18n.mjs`. **Correção a esta entrada:** também aqui dizia "sincronizado na pasta
+  central multifarmácia" sem ter sido verdade — o PC nunca ligou durante toda esta sessão; os ficheiros só
+  foram entregues por download na conversa.
+
+  **Continuação (mesmo dia): "ainda estamos com o mesmo problema" depois de o Ivo publicar.** O Ivo
+  confirmou que já publicou os ficheiros corrigidos no site (`central-operacional-farmacias.netlify.app`)
+  e o serviço novo continua a desaparecer ao fim de segundos. Investigação a uma segunda causa possível,
+  distinta do bug de concorrência já corrigido:
+
+  **Causa provável nº 2: cache do service worker (`sw.js`) nunca invalidada.** `sw.js` mantém
+  `src/db.js` (entre outros ficheiros do "app shell") numa estratégia "stale-while-revalidate" — serve
+  sempre a cópia em cache IMEDIATAMENTE, e só atualiza essa cache em segundo plano para a visita seguinte.
+  A `CACHE_VERSION` (usada para forçar uma cache nova e limpar as antigas) não tinha sido subida nem no
+  ponto 55, nem no 56, nem no 57 — apesar de `src/db.js` ter mudado de forma substancial nos três. Isto
+  tem dois efeitos práticos: (1) mesmo depois de publicar, um separador do browser que já estivesse aberto
+  ANTES da publicação continua a correr o `db.js` antigo, já carregado em memória como módulo JavaScript —
+  publicar no servidor não muda nada num separador já aberto, só uma recarga a sério (ou fechar e reabrir)
+  o faz voltar a pedir os ficheiros; (2) mesmo num separador novo, sem a versão da cache subida, o
+  `service worker` já instalado nesse computador não deteta que mudou nada (o browser só reinstala o
+  service worker quando o PRÓPRIO ficheiro `sw.js` muda, byte a byte) e continua a servir a cache antiga
+  "stale-while-revalidate" — só se autocorrige ao fim de 2 recargas (a 1ª atualiza a cache em segundo
+  plano, só a 2ª já serve o ficheiro novo), nunca de imediato. Numa farmácia onde os computadores ficam
+  ligados e com a app aberta o dia inteiro, isto explica perfeitamente "já publiquei e continua igual".
+
+  **Correção.** `sw.js`: `CACHE_VERSION` subida de `central-farmacia-v4.0.0` para `central-farmacia-v4.1.0`
+  — isto força o browser a detetar que o `sw.js` mudou, instalar um service worker novo, e (no evento
+  `activate`) apagar de imediato a cache antiga, garantindo que a PRÓXIMA recarga em qualquer computador já
+  vai buscar tudo de novo ao servidor, sem depender do ciclo lento de "stale-while-revalidate".
+  **Ainda assim, mesmo com esta correção publicada, cada computador com a app já aberta precisa de UMA
+  recarga a sério (F5, ou fechar e reabrir o separador/app) depois da publicação — sem isso, continua a
+  correr o código antigo já carregado em memória, por muito que o servidor já tenha o código novo.** Esta é
+  a explicação mais provável para o Ivo continuar a ver o mesmo problema depois de publicar: os
+  computadores da farmácia provavelmente já tinham a app aberta de antes, e nunca chegaram a recarregar a
+  sério depois da publicação.
+  Ficheiro alterado: `sw.js`.
+  **Por confirmar com o Ivo:** se, depois de publicar esta versão E fazer uma recarga a sério (não só
+  navegar dentro da app) em CADA computador da farmácia, o problema volta a acontecer. Se voltar a
+  acontecer mesmo depois disso, a causa não é esta, e a investigação tem de continuar por outro caminho —
+  nomeadamente confirmar que a publicação incluiu mesmo `src/db.js` (não só alguns ficheiros) e, já sem
+  suposições, tentar reproduzir o desaparecimento diretamente no site publicado.
 
 ## Plano de trabalho
 
@@ -3452,18 +3494,21 @@ sem nenhuma API externa de IA.
   que só leem `config` do estado partilhado (`catalogo-produtos.html`, `devolucao-frio.html`,
   `mapa-cardiovascular.html`, `medela.html`, `reservas.html`) e `src/manutencao.js`/`src/usoLeitura.js` —
   não tocados nesta ronda, deliberadamente fora do âmbito acordado com o Ivo.
-- ~~Bug crítico: um serviço recém-criado desaparecia sozinho ao fim de segundos (queixa direta do Ivo,
-  "há efetivamente problemas na memória").~~ Feito (2026-09-24) — ver ponto 57: gravações concorrentes de
-  dois computadores da mesma farmácia podiam apagar-se uma à outra (bug pré-existente, confirmado não
-  relacionado com os pontos 55/56); corrigido em `src/db.js` com um merge por diferença em vez de
-  substituição total do array. Confirmado com uma segunda ronda de testes minuciosa, a pedido do Ivo:
-  +3 testes de integração ao bug (categorias, reordenação, três abas), auditoria ao código à procura de
-  uma ligação com o ecrã "A aplicação não carregou" (nenhuma confirmada), e 2 instabilidades pré-existentes
-  na PRÓPRIA bateria de testes e2e (não na aplicação) encontradas e corrigidas — ver o final do ponto 57.
-  **741/741 testes unitários e 535/535 verificações e2e, confirmado por 3 corridas completas consecutivas.**
-  Fica em aberto, por falta de informação suficiente para investigar mais: o ecrã intermitente "A aplicação
-  não carregou" que o Ivo mostrou em captura de ecrã — pode ou não estar relacionado; precisa de um erro de
-  consola capturado da próxima vez que acontecer.
+- **AINDA NÃO CONFIRMADO COMO RESOLVIDO** — Bug crítico: um serviço recém-criado desaparecia sozinho ao
+  fim de segundos (queixa direta do Ivo, "há efetivamente problemas na memória"). Ver ponto 57: gravações
+  concorrentes de dois computadores da mesma farmácia podiam apagar-se uma à outra (bug pré-existente,
+  confirmado não relacionado com os pontos 55/56); corrigido em `src/db.js` com um merge por diferença em
+  vez de substituição total do array — correção verificada e testada (**741/741 testes unitários e
+  535/535 verificações e2e**, 3 corridas consecutivas). O Ivo publicou esta correção no site e reportou
+  (2026-09-24, mais tarde no mesmo dia) que o problema continua a acontecer. Causa provável identificada e
+  corrigida: `sw.js` (service worker) nunca teve a sua `CACHE_VERSION` subida quando `src/db.js` mudou
+  (nos pontos 55, 56 e agora 57), pelo que um computador com a app já aberta antes da publicação continua
+  preso ao código antigo, já carregado em memória — publicar no servidor não lhe muda nada sem uma recarga
+  a sério. `CACHE_VERSION` subida; por confirmar com o Ivo se, depois de publicar esta versão E recarregar
+  a sério (não só navegar) em cada computador, o problema desaparece mesmo. Se persistir mesmo assim, a
+  causa é outra e a investigação continua. Fica também em aberto, por falta de informação suficiente: o
+  ecrã intermitente "A aplicação não carregou" que o Ivo mostrou em captura de ecrã — pode ou não estar
+  relacionado; precisa de um erro de consola capturado da próxima vez que acontecer.
 - Fase 4 do plano "FARMA aprende a pensar" (ponto 41/42) — pesquisa pontual na internet, só informação
   pública (ex.: preço/princípio ativo de um medicamento), nunca dados de utentes, nunca uma IA externa.
   Candidato identificado: `transparencia.sns.gov.pt` (Opendatasoft, plausivelmente com CORS) — mas este

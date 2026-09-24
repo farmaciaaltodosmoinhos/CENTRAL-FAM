@@ -9,7 +9,15 @@
  * Sobe a versão de CACHE_VERSION sempre que o conteúdo de assets/ ou src/
  * mudar substancialmente, para invalidar caches antigas.
  */
-const CACHE_VERSION = "central-farmacia-v4.0.0";
+// Ponto 57: a versão não tinha sido subida quando src/db.js mudou (bug
+// crítico de gravações concorrentes) — um browser com o service worker já
+// instalado continua a servir "./src/db.js" (na lista de APP_SHELL, cache
+// "stale-while-revalidate") da cache ANTIGA em cada visita até a versão
+// mudar, mesmo depois de o ficheiro novo estar publicado no servidor. Subida
+// agora para forçar todos os browsers já com a app aberta a apanhar o
+// código corrigido logo na próxima visita, em vez de ficarem presos ao
+// comportamento antigo indefinidamente.
+const CACHE_VERSION = "central-farmacia-v4.1.0";
 const APP_SHELL = [
   "./",
   "./index.html",
