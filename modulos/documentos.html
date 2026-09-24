@@ -809,10 +809,16 @@ function aplicarBrandingFarmacia(){
 // o servidor recusa com 409 em vez de deixar esta gravação apagar em
 // silêncio o que esse outro gravou.
 let ESTADO_REV = null;
-async function fetchEstado(){
+async function fetchEstado(camposExtra){
   const token = getToken();
   if(!token){ voltarACentral(); throw new Error('sem sessão'); }
-  const res = await fetch('/api/data', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+  // Ponto 56 (continuação do ponto 55, agora do lado do GET): por omissão só
+  // pede a própria fatia ('documentos') + 'config' (marca/nome da farmácia e
+  // a limpeza do logótipo legado). O único sítio que precisa de OUTRO módulo
+  // é pullMedsFromPim() (lê o PIM) — passa explicitamente ['pim']. Nunca
+  // precisamos do resto do estado (aue, manipulados, etc.).
+  const campos = ['config', ...(camposExtra || ['documentos'])];
+  const res = await fetch('/api/data?campos=' + encodeURIComponent(campos.join(',')), { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
   if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
   if(!res.ok) throw new Error('HTTP ' + res.status);
   ESTADO_REV = res.headers.get('X-Estado-Rev');
@@ -830,14 +836,25 @@ async function gravarDocumentos(key, value){
   for(let tentativa=1; tentativa<=3; tentativa++){
     const estadoAtual = await fetchEstado();
     const novoDocumentos = { ...(estadoAtual.documentos || {}), [key]: value };
-    // Logótipo omitido de propósito (ver carregarLogoAsset acima).
-    const configSemLogo = { ...(estadoAtual.config || {}) };
-    delete configSemLogo.logo;
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
     if(ESTADO_REV != null) headers['X-Estado-Rev'] = ESTADO_REV;
+    // Ponto 55: só a fatia deste módulo — o servidor faz merge com o resto
+    // do estado (ver netlify/functions/data.js); reenviar tudo (incluindo
+    // config e os outros módulos) tornava cada gravação cada vez mais lenta
+    // à medida que a farmácia acumula dados, e um pedido lento tem mais
+    // hipótese de nunca chegar a completar-se. Exceção: uma conta antiga
+    // ainda com o logótipo embutido em config (de antes do asset store) —
+    // aproveita esta gravação para o limpar; nas restantes (a grande
+    // maioria), config nunca é sequer tocado.
+    const body = { documentos: novoDocumentos };
+    if(estadoAtual.config && estadoAtual.config.logo){
+      const configSemLogo = { ...estadoAtual.config };
+      delete configSemLogo.logo;
+      body.config = configSemLogo;
+    }
     const res = await fetch('/api/data', {
       method: 'PUT', headers,
-      body: JSON.stringify({ ...estadoAtual, config: configSemLogo, documentos: novoDocumentos })
+      body: JSON.stringify(body)
     });
     if(res.status === 401){ limparSessao(); voltarACentral(); throw new Error('sessão expirada'); }
     if(res.status === 409){ continue; } // outro dispositivo/separador gravou entretanto — relê (próxima iteração) e tenta de novo
@@ -2046,7 +2063,7 @@ async function pullMedsFromPim(){
     return;
   }
   try{
-    const estado = await fetchEstado();
+    const estado = await fetchEstado(['pim']);
     const pim = estado.pim || {};
     const utentes = pim.pim_utentes_v1 || [];
     const medicamentos = pim.pim_medicamentos_v1 || [];
