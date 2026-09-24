@@ -107,9 +107,21 @@ export async function run(browser) {
     const htmlLangEs = await page.evaluate(() => document.documentElement.lang);
     ok('i18n: <html lang> da conta nova é "es" logo após o signup', htmlLangEs === 'es', htmlLangEs);
 
-    const dataRes = JSON.parse((await apiFetch('/api/data', {
-      headers: { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem('central_saas_token'))}` }
-    })).body);
+    // A gravação de config.idioma no servidor é assíncrona e corre à parte da
+    // renderização (que os dois testes acima já confirmam ser imediata) — os
+    // 1500ms fixos acima chegam quase sempre, mas nesta sandbox, sob carga
+    // momentânea, por vezes ainda não tinham chegado, dando uma falha instável
+    // sem significado real. Substituído por um pequeno "poll" (em vez de mais
+    // um tempo fixo maior, que só adiaria o mesmo problema): tenta várias vezes
+    // com um intervalo curto, e avança assim que vir o valor esperado.
+    let dataRes = null;
+    for (let tentativa = 0; tentativa < 15; tentativa++) {
+      dataRes = JSON.parse((await apiFetch('/api/data', {
+        headers: { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem('central_saas_token'))}` }
+      })).body);
+      if (dataRes?.config?.idioma === 'es') break;
+      await page.waitForTimeout(400);
+    }
     ok('i18n: config.idioma="es" foi persistido no servidor logo a seguir ao signup', dataRes?.config?.idioma === 'es', JSON.stringify(dataRes?.config?.idioma));
 
     await ctx.close();

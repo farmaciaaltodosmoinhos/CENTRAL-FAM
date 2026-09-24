@@ -130,7 +130,10 @@ export async function run(browser) {
     await page.waitForTimeout(200);
     await page.click('#modalConfig .modal-tab[data-tab="poupanca"]');
 
-    const chartCarregouViaFallback = await page.waitForFunction(() => !!window.Chart, { timeout: 6000 }).then(() => true).catch(() => false);
+    // Ver nota em 17-farma-aprender.mjs: `waitForFunction(fn, options)` com só 2
+    // argumentos passa `options` como `arg` (ignorado) em vez de aplicar o
+    // timeout pedido — corrigido com `null` a meio para o timeout ser mesmo respeitado.
+    const chartCarregouViaFallback = await page.waitForFunction(() => !!window.Chart, null, { timeout: 6000 }).then(() => true).catch(() => false);
     ok('Poupança CDN: com a 1ª fonte (cdnjs) bloqueada, o Chart.js carrega na mesma pela 2ª fonte (jsdelivr)', chartCarregouViaFallback);
 
     const toastCdnTexto = await page.locator('#toastStack').innerText().catch(() => '');

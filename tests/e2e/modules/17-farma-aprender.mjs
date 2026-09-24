@@ -182,9 +182,23 @@ export async function run(browser) {
     // treino real: ~150 épocas sobre ~300 exemplos — demora vários segundos. Espera
     // pelo texto FINAL (não "#statusTreino:has-text" — o texto intermédio "A treinar…"
     // já contém "treinar" e faria o waitForSelector resolver cedo demais, antes do treino acabar).
+    //
+    // `page.waitForFunction(pageFunction, arg, options)` tem SEMPRE estes 3
+    // parâmetros posicionais — chamado só com 2 (função + `{ timeout }`), o
+    // Playwright interpreta o objeto de opções como `arg` (o argumento opaco
+    // passado para dentro da função da página, aqui nunca usado) e não como
+    // `options`, pelo que o timeout pedido era silenciosamente ignorado e o
+    // timeout REAL era sempre o valor por omissão da biblioteca (30000ms) —
+    // o que fazia este teste, computacionalmente pesado, falhar de forma
+    // instável sempre que este sandbox estivesse momentaneamente mais lento.
+    // Corrigido a passar `null` como `arg` para o timeout entrar mesmo como
+    // `options`, e alargado de 30s para 60s de margem (verificado por medição
+    // direta: a passagem real demora tipicamente poucos segundos; 60s dá
+    // grande margem sem esconder uma falha real do treino).
     await page3.waitForFunction(
       () => /concluído e aceite|não aceite/.test(document.getElementById('statusTreino')?.textContent || ''),
-      { timeout: 30000 }
+      null,
+      { timeout: 60000 }
     );
     const statusTreinoFinal = await page3.locator('#statusTreino').innerText();
     ok('Aprender/Treino (real): o treino real termina com sucesso ou com um motivo claro de recusa',

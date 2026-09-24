@@ -8,10 +8,15 @@
  * da faixa de temperatura 2°C–8°C), o nome da farmácia (só nome — este
  * modelo não usa logótipo, confirmado no HTML), as 10 linhas iniciais do
  * modelo e adicionar/remover linhas (incluindo remover exatamente a linha
- * certa, não outra), o limite de letra (9px–22px), o fluxo real de
- * auto-preenchimento por IA quando falta a chave API (sem chamar a rede
- * — não há chave configurada neste ambiente de testes), e o registo de
- * uso ao gerar a declaração.
+ * certa, não outra), o limite de letra (9px–22px), e o registo de uso ao
+ * gerar a declaração.
+ *
+ * Ponto 44/45: o auto-preenchimento por IA (upload de fatura + chave API da
+ * Anthropic chamada diretamente do browser) foi removido a pedido explícito
+ * do Ivo — violava a regra absoluta desta app de nunca usar IA externa. Os
+ * testes que cobriam esse fluxo (botão "Carregar ficheiro", modal de upload,
+ * aviso de chave em falta) foram removidos com ele; o preenchimento manual
+ * dos campos, coberto pelas secções abaixo, continua exatamente igual.
  *
  * Farmácia de teste sempre criada com signupFarmacia(), nunca partilhada
  * com outros ficheiros de tests/e2e/modules/.
@@ -86,23 +91,14 @@ export async function run(browser) {
   const fsMax = await page.locator('#fsVal').innerText();
   ok('Devolução de Frio: tamanho de letra nunca desce abaixo de 9px nem sobe acima de 22px', fsMin === '9px' && fsMax === '22px', JSON.stringify({ fsMin, fsMax }));
 
-  // ---------- 6. Auto-preenchimento por IA: sem chave API, avisa e não tenta chamar a rede ----------
-  await page.click('button:has-text("Carregar ficheiro (auto-preencher)")');
-  await page.waitForTimeout(100);
-  const modalAberto = await page.locator('#uploadZone.open').count();
-  let mensagemAlerta = null;
-  page.once('dialog', async (d) => { mensagemAlerta = d.message(); await d.accept(); });
-  const pngMinusculo = Buffer.from('89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4890000000A49444154789C6360000002000100FFFF03000006000557BFABD40000000049454E44AE426082', 'hex');
-  await page.setInputFiles('#fileInput', { name: 'fatura-teste.png', mimeType: 'image/png', buffer: pngMinusculo });
-  await page.waitForTimeout(300);
-  const modalReabertoSemChave = await page.locator('#uploadZone.open').count();
-  const overlayProcessamentoFechado = await page.locator('#procOverlay.open').count();
-  ok('Devolução de Frio: carregar ficheiro sem indicar a Chave API avisa o utilizador e reabre o modal, sem tentar chamar a rede',
-    modalAberto === 1 && modalReabertoSemChave === 1 && overlayProcessamentoFechado === 0 &&
-    (mensagemAlerta || '').includes('Chave API Anthropic'),
-    JSON.stringify({ modalAberto, modalReabertoSemChave, overlayProcessamentoFechado, mensagemAlerta }));
-  await page.click('.upload-close');
-  await page.waitForTimeout(100);
+  // ---------- 6. Ponto 44/45: o botão/modal de auto-preenchimento por IA (Anthropic direto do
+  // browser) foi removido — confirma que não sobra nenhum vestígio na página. ----------
+  const botaoIaAindaExiste = await page.locator('button:has-text("auto-preencher")').count();
+  const modalUploadAindaExiste = await page.locator('#uploadZone').count();
+  const campoApiKeyAindaExiste = await page.locator('#apiKeyInput').count();
+  ok('Devolução de Frio: o auto-preenchimento por IA (chave Anthropic no browser) foi mesmo removido — sem botão, modal, ou campo de chave API',
+    botaoIaAindaExiste === 0 && modalUploadAindaExiste === 0 && campoApiKeyAindaExiste === 0,
+    JSON.stringify({ botaoIaAindaExiste, modalUploadAindaExiste, campoApiKeyAindaExiste }));
 
   // ---------- 7. "Imprimir" chama window.print() e regista o uso exatamente uma vez ----------
   const usoAntes = await contagemUso(token, 'gerar_declaracao');

@@ -66,6 +66,18 @@ export async function run(browser) {
     for (const [id, val] of Object.entries(campos)) await page.fill('#' + id, val);
   }
 
+  // ---------- 0. Desliga "Enviar automaticamente" (ponto 44) para as secções 1-12 abaixo, escritas
+  // antes desta funcionalidade existir, continuarem a testar exatamente o que testavam (nenhuma delas
+  // espera que o preview do email abra sozinho a seguir a "Guardar"). O comportamento por omissão
+  // (ativado) e o disparo automático real são testados à parte, na secção 13 no fim deste ficheiro.
+  await page.click('button:has-text("✉ Email")');
+  await page.waitForSelector('#emailSettingsOverlay.open');
+  const autoLigadoPorOmissao = await page.locator('#autoEmailOnBtn.sel').count();
+  ok('Manipulados: "Enviar automaticamente" vem ativado por omissão (ponto 44)', autoLigadoPorOmissao === 1);
+  await page.click('#autoEmailOffBtn');
+  await page.click('#emailSettingsOverlay .modal-foot button:has-text("Guardar")');
+  await page.waitForTimeout(150);
+
   // ---------- 1. Validação: campos obrigatórios bloqueiam a gravação ----------
   await page.click('button:has-text("+ Novo pedido")');
   await page.waitForTimeout(150);
@@ -436,6 +448,69 @@ export async function run(browser) {
     emailFinal.subject === 'Orçamento urgente: Manipulado Template QA' &&
     emailFinal.body === 'Olá,\n\nPeço orçamento para Manipulado Template QA para o utente Utente Template QA.');
   await page.click('.danger-link:has-text("Não enviar")');
+  await page.click('.modal-foot button:has-text("Cancelar")');
+  await page.waitForTimeout(150);
+
+  // ---------- 13. Ponto 44 — disparo automático da pré-visualização ao guardar um NOVO pedido,
+  // com a receita anexada automaticamente. Bug real reportado pelo Ivo: antes desta correção,
+  // guardar um pedido novo nunca abria nada — era preciso reabrir o pedido e clicar "✉ Pedir
+  // orçamento" à parte, e mesmo aí o email nunca levava a receita em anexo. ----------
+  await page.click('button:has-text("✉ Email")');
+  await page.waitForSelector('#emailSettingsOverlay.open');
+  await page.click('#autoEmailOnBtn'); // volta a ligar — é o comportamento por omissão que se quer testar
+  await page.click('#emailSettingsOverlay .modal-foot button:has-text("Guardar")');
+  await page.waitForTimeout(150);
+
+  const nomeAuto = 'Utente Manip QA AutoEmail';
+  await page.click('button:has-text("+ Novo pedido")');
+  await page.waitForSelector('#overlay.open');
+  await preencherPedido({
+    f_operador: 'Operador QA', f_medicamento: 'Manipulado AutoEmail QA',
+    f_nome: nomeAuto, f_telefone: '910000088', f_nif: '199199555', f_receita: 'REC-AUTO-QA'
+  });
+  await page.selectOption('#f_canal', 'Balcão');
+  // anexa uma "receita" real (imagem fabricada em memória — não precisa de nenhum ficheiro em disco)
+  await page.setInputFiles('#f_anexo_input', {
+    name: 'receita-auto-qa.png', mimeType: 'image/png',
+    buffer: Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'), // cabeçalho PNG mínimo — chega para testar o fluxo de anexo, não precisa de ser uma imagem válida/completa
+  });
+  await page.waitForTimeout(300);
+  await page.click('#overlay .modal-foot button:has-text("Guardar")');
+
+  // A pré-visualização do email deve abrir SOZINHA, sem clicar em "✉ Pedir orçamento" (correção do ponto 44).
+  await page.waitForSelector('#emailPreviewOverlay.open', { timeout: 5000 });
+  ok('Manipulados (ponto 44): guardar um pedido NOVO dispara sozinho a pré-visualização do pedido de orçamento', true);
+
+  const anexosTexto = await poll(async () => {
+    const t = await page.locator('#ep_attachments').innerText();
+    return /receita-auto-qa\.png/.test(t) ? t : null;
+  }, { tries: 15, delay: 300 });
+  ok('Manipulados (ponto 44): a receita anexada ao pedido aparece listada nos anexos do email (resolvida via dataStore.getAsset)',
+    !!anexosTexto, anexosTexto);
+
+  await page.click('.danger-link:has-text("Não enviar")');
+  await page.waitForTimeout(150);
+
+  // Desligar "Enviar automaticamente" volta a impedir o disparo automático no próximo pedido novo.
+  await page.click('button:has-text("✉ Email")');
+  await page.waitForSelector('#emailSettingsOverlay.open');
+  await page.click('#autoEmailOffBtn');
+  await page.click('#emailSettingsOverlay .modal-foot button:has-text("Guardar")');
+  await page.waitForTimeout(150);
+
+  const nomeSemAuto = 'Utente Manip QA SemAutoEmail';
+  await page.click('button:has-text("+ Novo pedido")');
+  await page.waitForSelector('#overlay.open');
+  await preencherPedido({
+    f_operador: 'Operador QA', f_medicamento: 'Manipulado SemAutoEmail QA',
+    f_nome: nomeSemAuto, f_telefone: '910000099', f_nif: '199199666', f_receita: 'REC-NOAUTO-QA'
+  });
+  await page.selectOption('#f_canal', 'Balcão');
+  await page.click('#overlay .modal-foot button:has-text("Guardar")');
+  await page.waitForTimeout(500);
+  const previewAindaFechado = await page.locator('#emailPreviewOverlay.open').count();
+  ok('Manipulados (ponto 44): com "Enviar automaticamente" desligado, guardar um pedido novo NÃO abre a pré-visualização',
+    previewAindaFechado === 0);
 
   await ctx.close();
 }

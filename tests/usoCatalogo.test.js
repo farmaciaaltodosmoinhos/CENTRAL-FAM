@@ -4,8 +4,8 @@ import { TAREFAS_CATALOGO, MODULOS_NOMES, chaveTarefa, estimativaEfetiva, todasE
 import { MODULOS_ATALHOS } from "../src/domain.js";
 
 describe("usoCatalogo.js — integridade do catálogo de tarefas", () => {
-  test("o catálogo tem 154 tarefas (151 já existentes + 3 novas do módulo FARMA IA — ponto 25: ver_alertas/perguntar/ver_oportunidades)", () => {
-    assert.equal(TAREFAS_CATALOGO.length, 154);
+  test("o catálogo tem 153 tarefas (154 anteriores − 1: ponto 44/45 removeu 'auto_preencher_ia' de devolucao-frio ao remover a chamada direta à API da Anthropic no browser)", () => {
+    assert.equal(TAREFAS_CATALOGO.length, 153);
   });
 
   test("nenhuma chave 'modulo.tarefaId' está duplicada", () => {
