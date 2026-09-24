@@ -13,7 +13,10 @@ import {
   readableTextColor,
   shade,
   placeholderImg,
-  deveAdiarRenderizacao
+  deveAdiarRenderizacao,
+  validarNif,
+  validarEmail,
+  validarTelefone
 } from "../src/utils.js";
 
 describe("utils.js — escapeHtml", () => {
@@ -284,5 +287,81 @@ describe("utils.js — deveAdiarRenderizacao", () => {
   test("um <input type=checkbox> focado NÃO adia (só texto/color contam)", () => {
     const el = inputFalso("INPUT", "checkbox");
     assert.equal(deveAdiarRenderizacao(el, containerComElemento(el)), false);
+  });
+});
+
+describe("utils.js — validarNif", () => {
+  test("aceita NIFs reais com o dígito de controlo correto", () => {
+    assert.equal(validarNif("123456789"), true);
+    assert.equal(validarNif("500000000"), true);
+    assert.equal(validarNif("190000007"), true);
+    assert.equal(validarNif("234567899"), true);
+  });
+  test("rejeita um NIF com o dígito de controlo errado (erro mais comum ao copiar)", () => {
+    assert.equal(validarNif("123456788"), false);
+  });
+  test("aceita com espaços/pontos, formato comum ao copiar do cartão de cidadão", () => {
+    assert.equal(validarNif("123 456 789"), true);
+    assert.equal(validarNif("123.456.789"), true);
+  });
+  test("rejeita comprimento errado (curto ou longo)", () => {
+    assert.equal(validarNif("12345678"), false);
+    assert.equal(validarNif("1234567890"), false);
+  });
+  test("rejeita não-dígitos", () => {
+    assert.equal(validarNif("12345678A"), false);
+  });
+  test("rejeita vazio/omitido", () => {
+    assert.equal(validarNif(""), false);
+    assert.equal(validarNif(undefined), false);
+    assert.equal(validarNif(null), false);
+  });
+});
+
+describe("utils.js — validarEmail", () => {
+  test("aceita emails com formato válido", () => {
+    assert.equal(validarEmail("ana@farmacia.pt"), true);
+    assert.equal(validarEmail("ana.costa+aue@sub.dominio.com"), true);
+  });
+  test("rejeita sem @, sem domínio ou com espaços", () => {
+    assert.equal(validarEmail("anafarmacia.pt"), false);
+    assert.equal(validarEmail("ana@farmacia"), false);
+    assert.equal(validarEmail("ana @farmacia.pt"), false);
+    assert.equal(validarEmail("ana@ farmacia.pt"), false);
+  });
+  test("aceita com espaços à volta (aparados antes de validar)", () => {
+    assert.equal(validarEmail("  ana@farmacia.pt  "), true);
+  });
+  test("rejeita vazio/omitido", () => {
+    assert.equal(validarEmail(""), false);
+    assert.equal(validarEmail(undefined), false);
+  });
+});
+
+describe("utils.js — validarTelefone", () => {
+  test("aceita telemóvel e fixo portugueses válidos (9 dígitos)", () => {
+    assert.equal(validarTelefone("912345678"), true); // telemóvel
+    assert.equal(validarTelefone("213456789"), true); // fixo Lisboa
+    assert.equal(validarTelefone("800123456"), true); // linha gratuita
+  });
+  test("aceita com espaços/traços e indicativo +351 ou 00351", () => {
+    assert.equal(validarTelefone("912 345 678"), true);
+    assert.equal(validarTelefone("912-345-678"), true);
+    assert.equal(validarTelefone("+351 912345678"), true);
+    assert.equal(validarTelefone("00351912345678"), true);
+  });
+  test("rejeita um primeiro dígito fora do plano de numeração português (0, 1, 4, 5)", () => {
+    assert.equal(validarTelefone("012345678"), false);
+    assert.equal(validarTelefone("112345678"), false);
+    assert.equal(validarTelefone("412345678"), false);
+    assert.equal(validarTelefone("512345678"), false);
+  });
+  test("rejeita comprimento errado (a mais ou a menos um dígito)", () => {
+    assert.equal(validarTelefone("91234567"), false);
+    assert.equal(validarTelefone("9123456789"), false);
+  });
+  test("rejeita vazio/omitido", () => {
+    assert.equal(validarTelefone(""), false);
+    assert.equal(validarTelefone(undefined), false);
   });
 });

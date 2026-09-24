@@ -14,6 +14,11 @@ function reqGet(token) {
     method: "GET", headers: token ? { authorization: `Bearer ${token}` } : {}
   });
 }
+function reqGetCampos(token, campos) {
+  return new Request(`https://site.netlify.app/api/data?campos=${encodeURIComponent(campos)}`, {
+    method: "GET", headers: token ? { authorization: `Bearer ${token}` } : {}
+  });
+}
 function reqPut(token, body, rev) {
   const headers = { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) };
   if (rev !== undefined) headers["x-estado-rev"] = String(rev);
@@ -77,15 +82,38 @@ describe("/api/data — merge de estado entre módulos", () => {
 });
 
 describe("/api/data — validação e métodos", () => {
-  test("rejeita corpo inválido (400)", async () => {
+  test("rejeita corpo que não é um objeto (400)", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    const resArray = await handleRequest(reqPut(tokenA, ["não", "é", "objeto"]), getStoreImpl);
+    assert.equal(resArray.status, 400);
+    const resNull = await handleRequest(reqPut(tokenA, null), getStoreImpl);
+    assert.equal(resNull.status, 400);
+  });
+
+  // Ponto 55: um corpo com só uma chave desconhecida (nenhuma de
+  // servicos/categorias/config) já não é rejeitado — é exatamente o que um
+  // módulo agora envia (ex.: { aue: {...} }), ver describe abaixo.
+  test("aceita um corpo só com uma chave de módulo, sem servicos/categorias/config (200)", async () => {
     const { getStoreImpl } = fakeStoreFactory();
     const res = await handleRequest(reqPut(tokenA, { foo: "bar" }), getStoreImpl);
+    assert.equal(res.status, 200);
+  });
+
+  test("rejeita 'categorias' presente mas do tipo errado (400)", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    const res = await handleRequest(reqPut(tokenA, { servicos: [], categorias: "não é array", config: {} }), getStoreImpl);
     assert.equal(res.status, 400);
   });
 
-  test("rejeita corpo sem 'categorias' como array (400)", async () => {
+  test("rejeita 'servicos' presente mas do tipo errado (400)", async () => {
     const { getStoreImpl } = fakeStoreFactory();
-    const res = await handleRequest(reqPut(tokenA, { servicos: [], categorias: "não é array", config: {} }), getStoreImpl);
+    const res = await handleRequest(reqPut(tokenA, { servicos: "não é array" }), getStoreImpl);
+    assert.equal(res.status, 400);
+  });
+
+  test("rejeita 'config' presente mas do tipo errado (400)", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    const res = await handleRequest(reqPut(tokenA, { config: "não é objeto" }), getStoreImpl);
     assert.equal(res.status, 400);
   });
 
@@ -96,12 +124,13 @@ describe("/api/data — validação e métodos", () => {
     assert.equal(res.status, 400);
   });
 
-  test("um PUT sem 'config' assume {} em vez de rebentar", async () => {
+  test("um PUT sem 'config' PRESERVA o config já gravado, em vez de o apagar (ponto 55)", async () => {
     const { getStoreImpl } = fakeStoreFactory();
+    await handleRequest(reqPut(tokenA, { servicos: [], categorias: [], config: { tema: "escuro" } }), getStoreImpl);
     const res = await handleRequest(reqPut(tokenA, { servicos: [], categorias: [] }), getStoreImpl);
     assert.equal(res.status, 200);
     const estado = await (await handleRequest(reqGet(tokenA), getStoreImpl)).json();
-    assert.deepEqual(estado.config, {});
+    assert.deepEqual(estado.config, { tema: "escuro" }); // já não é substituído por {}
   });
 
   test("método não suportado devolve 405", async () => {
@@ -136,6 +165,105 @@ describe("/api/data — merges sucessivos preservam campos de vários módulos a
     assert.deepEqual(estado.manipulados, [{ id: "m1" }]);
     assert.deepEqual(estado.gabinete, { itens: [] });
     assert.deepEqual(estado.servicos, [{ id: "s1" }]);
+  });
+});
+
+describe("/api/data — gravação parcial, só a fatia do módulo (ponto 55)", () => {
+  test("um PUT só com { aue: {...} } não apaga nem mexe em servicos/categorias/config já gravados", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    await handleRequest(reqPut(tokenA, { servicos: [{ id: "s1" }], categorias: [{ id: "c1" }], config: { tema: "escuro" } }), getStoreImpl);
+
+    // um módulo (ex. AUE) grava só a SUA fatia, sem reenviar o resto do estado
+    const res = await handleRequest(reqPut(tokenA, { aue: { pedidos: [{ id: "p1" }] } }), getStoreImpl);
+    assert.equal(res.status, 200);
+
+    const estado = await (await handleRequest(reqGet(tokenA), getStoreImpl)).json();
+    assert.deepEqual(estado.servicos, [{ id: "s1" }]);
+    assert.deepEqual(estado.categorias, [{ id: "c1" }]);
+    assert.deepEqual(estado.config, { tema: "escuro" });
+    assert.deepEqual(estado.aue, { pedidos: [{ id: "p1" }] });
+  });
+
+  test("gravações parciais sucessivas de módulos diferentes acabam todas presentes (sem nenhuma pisar as outras)", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    await handleRequest(reqPut(tokenA, { aue: { pedidos: [{ id: "p1" }] } }), getStoreImpl);
+    await handleRequest(reqPut(tokenA, { pim: { utentes: [{ id: "u1" }] } }), getStoreImpl);
+    await handleRequest(reqPut(tokenA, { manipulados: [{ id: "m1" }] }), getStoreImpl);
+
+    const estado = await (await handleRequest(reqGet(tokenA), getStoreImpl)).json();
+    assert.deepEqual(estado.aue, { pedidos: [{ id: "p1" }] });
+    assert.deepEqual(estado.pim, { utentes: [{ id: "u1" }] });
+    assert.deepEqual(estado.manipulados, [{ id: "m1" }]);
+    // o painel principal nunca gravou nada aqui — servicos/categorias ficam no valor por omissão
+    assert.deepEqual(estado.servicos, []);
+    assert.deepEqual(estado.categorias, []);
+  });
+
+  test("o bloqueio otimista (ponto 50) continua a funcionar normalmente com um corpo parcial", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    const rev0 = (await handleRequest(reqGet(tokenA), getStoreImpl)).headers.get("x-estado-rev");
+    const put1 = await handleRequest(reqPut(tokenA, { aue: { pedidos: [{ id: "da-1a" }] } }, rev0), getStoreImpl);
+    assert.equal(put1.status, 200);
+
+    // a 2ª gravação, com a mesma revisão já ultrapassada, continua a ser recusada com 409
+    const put2 = await handleRequest(reqPut(tokenA, { aue: { pedidos: [{ id: "da-2a-desatualizada" }] } }, rev0), getStoreImpl);
+    assert.equal(put2.status, 409);
+
+    const estado = await (await handleRequest(reqGet(tokenA), getStoreImpl)).json();
+    assert.deepEqual(estado.aue, { pedidos: [{ id: "da-1a" }] });
+  });
+});
+
+describe("/api/data — leitura parcial, só as chaves pedidas (ponto 56)", () => {
+  test("GET com ?campos=aue,config devolve só essas duas chaves de topo", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    await handleRequest(reqPut(tokenA, {
+      servicos: [{ id: "s1" }], categorias: [{ id: "c1" }], config: { tema: "escuro" },
+      aue: { pedidos: [{ id: "p1" }] }, manipulados: [{ id: "m1" }]
+    }), getStoreImpl);
+
+    const res = await handleRequest(reqGetCampos(tokenA, "aue,config"), getStoreImpl);
+    assert.equal(res.status, 200);
+    const estado = await res.json();
+    assert.deepEqual(Object.keys(estado).sort(), ["aue", "config"]);
+    assert.deepEqual(estado.aue, { pedidos: [{ id: "p1" }] });
+    assert.deepEqual(estado.config, { tema: "escuro" });
+    // as chaves não pedidas (servicos/categorias/manipulados) simplesmente não vêm
+    assert.equal(estado.servicos, undefined);
+    assert.equal(estado.manipulados, undefined);
+  });
+
+  test("pedir uma chave que a farmácia ainda não tem simplesmente não a inclui, nunca um erro", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    const res = await handleRequest(reqGetCampos(tokenA, "aue,config"), getStoreImpl);
+    assert.equal(res.status, 200);
+    const estado = await res.json();
+    // tenant novo: "aue" nunca foi gravado, por isso fica de fora; "config" faz
+    // parte do estado vazio por omissão (ESTADO_VAZIO), por isso vem como {}.
+    assert.deepEqual(estado, { config: {} });
+    assert.equal(estado.aue, undefined);
+  });
+
+  test("sem o parâmetro 'campos', o GET continua a devolver o estado completo (compatibilidade)", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    await handleRequest(reqPut(tokenA, { servicos: [{ id: "s1" }], categorias: [], config: {}, aue: { pedidos: [] } }), getStoreImpl);
+    const estado = await (await handleRequest(reqGet(tokenA), getStoreImpl)).json();
+    assert.deepEqual(Object.keys(estado).sort(), ["aue", "categorias", "config", "servicos"]);
+  });
+
+  test("o cabeçalho X-Estado-Rev vem sempre, mesmo com leitura parcial", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    await handleRequest(reqPut(tokenA, { aue: { pedidos: [] } }), getStoreImpl);
+    const res = await handleRequest(reqGetCampos(tokenA, "aue"), getStoreImpl);
+    assert.equal(res.headers.get("x-estado-rev"), "1");
+  });
+
+  test("uma leitura parcial nunca mistura dados de outro tenant", async () => {
+    const { getStoreImpl } = fakeStoreFactory();
+    await handleRequest(reqPut(tokenA, { aue: { pedidos: [{ id: "da-A" }] } }), getStoreImpl);
+    await handleRequest(reqPut(tokenB, { aue: { pedidos: [{ id: "da-B" }] } }), getStoreImpl);
+    const estadoA = await (await handleRequest(reqGetCampos(tokenA, "aue"), getStoreImpl)).json();
+    assert.deepEqual(estadoA.aue, { pedidos: [{ id: "da-A" }] });
   });
 });
 
