@@ -3188,6 +3188,133 @@ sem nenhuma API externa de IA.
   Ficheiro novo: `assets/dados-devolucoes-armazenistas.json`.
   Sincronizado na pasta `central multifarmácia` do PC do Ivo.
 
+- **Ponto 57 — bug crítico: um serviço recém-criado desaparecia sozinho ao fim de segundos.** Queixa
+  direta do Ivo (2026-09-24): "crio serviço, vejo-o no sítio certo durante uns 10 segundos e depois
+  desaparece totalmente, quer seja do sítio onde estava quer seja do 'ver tudo' ou da lista de todos os
+  serviços no sítio de criação". Confirmado por si próprio como NÃO relacionado com os pontos 55/56 de
+  hoje ("já vinha de trás") — investigado como bug pré-existente, com prioridade alta por envolver perda
+  real de dados numa farmácia em produção.
+
+  **Primeira hipótese, descartada.** Pensou-se inicialmente que o ecrã "Início" (que só mostra as pastas
+  de categorias, nunca uma lista plana de serviços — é preciso entrar numa categoria ou em "Ver tudo")
+  pudesse estar a confundir o Ivo. Ele corrigiu isto com detalhe direto: o serviço desaparece mesmo de
+  TODOS os sítios, incluindo "Ver tudo" e a própria lista de criação — não é um problema de navegação.
+  Confirmado por reprodução automatizada (Playwright) que um serviço novo incrementa corretamente o
+  contador da sua categoria mesmo sem aparecer diretamente no ecrã "Início" — este comportamento das
+  pastas está correto e não é o bug.
+
+  **Causa raiz confirmada (reproduzida em Playwright, com dois separadores/computadores concorrentes).**
+  `src/db.js`: toda a escrita de serviços/categorias passa por `putAll()`, que grava sempre o array
+  COMPLETO tal como este computador o conhece localmente. Quando o servidor recusa a gravação por conflito
+  de revisão (409 — outro computador gravou entretanto; ver bloqueio otimista do ponto 50), `persist()`
+  relia o estado fresco do servidor e repetia a gravação — mas `putAll` reaplicava a mudança fazendo
+  `cache.servicos = items`, uma SUBSTITUIÇÃO TOTAL do array pelo instantâneo antigo deste computador, por
+  cima do estado fresco. Isto apagava silenciosamente qualquer serviço que OUTRO computador tivesse
+  acrescentado nesse intervalo — mesmo sendo um serviço completamente diferente, nunca tocado por esta
+  gravação. Numa farmácia real com vários postos de trabalho abertos ao mesmo tempo, basta outro
+  computador gravar qualquer coisa (até algo trivial, como marcar um favorito) pouco depois de um serviço
+  ser criado, e entrar em conflito de revisão nessa gravação, para o serviço novo ser varrido — exatamente
+  o sintoma descrito ("10 segundos depois desaparece"). `setConfig()`, ao lado, nunca teve este problema:
+  o seu `aplicar` já fazia um MERGE (`{ ...cache.config, [key]: value }`) em vez de substituir tudo.
+
+  **Reprodução (antes da correção).** Duas "abas" independentes (dois computadores da mesma farmácia): a
+  aba A cria e grava um serviço com sucesso; a aba B, com a cache desatualizada (nunca viu o de A), cria o
+  SEU serviço e grava — entra em conflito de revisão, tenta de novo, e essa nova tentativa apaga por
+  completo o serviço da aba A do servidor. Confirmado programaticamente contra o servidor real (função
+  `netlify/functions/data.js`), não só por inspeção de código.
+
+  **Correção.** `src/db.js`: `putAll()` deixou de substituir o array inteiro. Em vez disso, calcula (por
+  `id`, uma função nova `calcularDiff`) exatamente o que ESTA chamada acrescentou, mudou ou removeu —
+  comparando o array pedido com o último estado conhecido antes desta chamada — e reaplica só essa
+  diferença (`aplicarDiff`) sobre o que o servidor tiver, tanto na primeira tentativa como em cada nova
+  tentativa depois de um 409. Isto preserva sempre o que outro computador tiver acrescentado, mudado ou
+  removido no intervalo, e continua a permitir remover corretamente o que esta gravação queria mesmo
+  remover. Limite conhecido e aceite: uma edição ao MESMO serviço, em simultâneo, por dois computadores
+  diferentes, continua "o último a gravar ganha" só para esse serviço em concreto — não há forma de
+  reconciliar duas edições diferentes ao mesmo campo sem uma pessoa decidir; o que esta correção resolve é
+  o caso, de longe mais comum numa farmácia com vários postos, de dois computadores a mexerem em serviços
+  DIFERENTES ao mesmo tempo — que é exatamente o que o Ivo reportou.
+
+  **Verificação.** `tests/db.test.js` (ficheiro novo): 6 testes unitários às funções puras
+  `calcularDiff`/`aplicarDiff` (nenhuma alteração, um item novo, uma remoção, um item mudado, e que
+  `aplicarDiff` preserva itens não tocados pela diferença mesmo sobre uma lista fresca com itens novos de
+  outra aba) + 2 testes de integração contra o servidor real (`netlify/functions/data.js`, o mesmo usado
+  por `tests/data.test.js`) reproduzindo o cenário de duas abas concorrentes: (1) B cria o seu serviço
+  depois de A, com um 409 pelo meio, e os DOIS sobrevivem; (2) uma remoção feita por B é respeitada e uma
+  adição feita por A não é anulada, mesmo em conflito. Confirmado que estes 2 testes de integração FALHAM
+  (reproduzindo o bug exato) contra o código anterior ao ponto 57, e passam com a correção — não é só uma
+  correção plausível, é uma correção verificada a apanhar mesmo a regressão. **738/738 testes unitários e
+  528/529 verificações e2e** (a 1 falha isolada, em `17-farma-aprender.mjs`, é uma instabilidade de tempo
+  pré-existente e não relacionada — o passo de treino local por IA, computacionalmente pesado, por vezes
+  excede um limite de 30s neste sandbox; confirmado por repetição que falha e passa aleatoriamente tanto
+  com o código antigo como com o novo, nunca relacionado com serviços/categorias).
+  Ficheiro alterado: `src/db.js`. Ficheiro novo: `tests/db.test.js`.
+  Sincronizado na pasta `central multifarmácia` do PC do Ivo.
+
+  **Em aberto, não resolvido nesta ronda:** o ecrã intermitente "A aplicação não carregou" que o Ivo
+  mostrou em captura de ecrã (mecanismo do ponto 52, ativado quando `window.onerror`/`error` apanha uma
+  falha de carregamento de recurso/script durante o arranque, ou ao fim de 8s se a app nunca acabar de
+  arrancar). Pode estar relacionado com o bug de concorrência acima (se corromper outro estado a ponto de
+  causar um erro de script) ou ser um problema totalmente à parte (uma falha de rede genuinamente
+  transitória durante o arranque). Precisa de mais informação para confirmar — idealmente um erro de
+  consola do browser capturado pelo Ivo da próxima vez que acontecer.
+
+  **Bateria de confirmação adicional (mesmo dia, a pedido direto do Ivo: "faz mais uma bateria de testes
+  minuciosa para termos a certeza que está tudo resolvido e se existir medidas para funcionar melhor ainda
+  aplica-as").**
+
+  *Mais cobertura de teste ao próprio bug.* `tests/db.test.js` ganhou 3 testes de integração novos, para
+  além dos 2 já descritos acima: (1) confirma que a mesma proteção se aplica a `categorias`, não só a
+  `servicos` (o código é genérico, mas só estava testado num dos dois); (2) confirma que reordenar serviços
+  já existentes (que muda o campo `ordem` de TODOS eles) não apaga um serviço acrescentado por outra aba
+  entretanto, e que a nova ordem é corretamente aplicada aos que foram mesmo reordenados; (3) confirma o
+  caso com TRÊS abas a criar serviços diferentes em sequência (não só duas), cada uma a reagir a pelo menos
+  um conflito de revisão, com as três a sobreviverem. Total: 11 testes em `tests/db.test.js` (**741/741
+  testes unitários** no total do projeto).
+
+  *Auditoria a uma possível ligação com o ecrã "A aplicação não carregou".* Hipótese considerada: o bug do
+  ponto 57 (antes da correção) podia deixar a interface com uma referência a um serviço/categoria que a
+  meio da sessão deixasse de existir no array (apagado pela substituição às cegas), e um sítio do código
+  que assumisse `array.find(...)` sempre bem-sucedido podia rebentar com um erro de script não apanhado —
+  exatamente o que ativaria o ecrã de fallback. Verificação (não só suposição): todos os pontos do código
+  que fazem `servicos.find(...)`/`categorias.find(...)` (`actions.js`, `domain.js`, `src/ui/modals.js`,
+  `src/ui/sidebar.js`, `src/store.js`, `farmaAcoes.js`) já têm proteção (`if (!x) return`, `x ? ... : null`,
+  encadeamento opcional) para o caso de o item já não existir — não foi encontrado nenhum ponto que
+  rebentasse com um item em falta. Conclusão: possível, mas sem confirmação — sem mais informação (um erro
+  de consola real capturado no momento em que acontece), este ecrã continua em aberto, não se pode afirmar
+  que o ponto 57 o resolveu.
+
+  *Instabilidade encontrada e corrigida na própria bateria de testes e2e (não na aplicação).* Ao correr a
+  bateria completa várias vezes seguidas para confirmar 0 regressões, `17-farma-aprender.mjs` (o teste de
+  treino real por IA local) falhava por vezes com "Timeout 30000ms exceeded", de forma aparentemente
+  aleatória. Investigado a fundo (não aceite como "sandbox lento" sem confirmar): `page.waitForFunction(fn,
+  options)` do Playwright tem sempre 3 parâmetros posicionais (`pageFunction, arg, options`) — chamado só
+  com 2, o valor `{ timeout: 30000 }` era interpretado como `arg` (o argumento passado para dentro da
+  função da página, aqui nunca usado), e NÃO como `options` — pelo que o timeout pedido era sempre
+  ignorado, e o timeout REAL aplicado era sempre o valor por omissão da biblioteca (30000ms), fixo,
+  independentemente do número escrito no teste. Como o treino real é computacionalmente pesado (~150
+  épocas sobre ~300 exemplos), qualquer lentidão momentânea do sandbox fazia-o ultrapassar esse limite fixo
+  de 30s. Confirmado com o código-fonte do Playwright instalado (`waitForFunction(pageFunction, arg,
+  options = {})`), não por suposição. Corrigido em `17-farma-aprender.mjs` (e no mesmo padrão, encontrado
+  por grep, em `09-poupanca.mjs`) a passar `null` como segundo argumento para o timeout entrar mesmo como
+  `options`, com o limite alargado de 30s para 60s/6s de margem. Confirmado por 3 corridas isoladas
+  consecutivas (antes falhava por vezes, mesmo com código antigo e novo do ponto 57 — não era causado pelo
+  ponto 57) que a correção resolve mesmo a instabilidade. Uma segunda instabilidade, menor, foi encontrada
+  em `15-i18n.mjs` (uma verificação com uma espera fixa de 1500ms antes de confirmar que `config.idioma`
+  já tinha sido gravado no servidor a seguir ao registo de conta) — substituída por um pequeno "poll" (até
+  15 tentativas, 400ms de intervalo, avança assim que vir o valor esperado) em vez de mais um tempo fixo
+  maior, que só adiaria o mesmo problema sem o resolver. Nenhuma destas duas instabilidades tinha qualquer
+  relação com o ponto 57 (uma é sobre treino de IA local, a outra sobre o idioma escolhido no registo —
+  nenhuma toca em serviços/categorias/`putAll`); são bugs pré-existentes na PRÓPRIA bateria de testes,
+  nunca na aplicação.
+
+  **Verificação final.** **741/741 testes unitários** e **535/535 verificações e2e, confirmado por 3
+  corridas completas consecutivas sem nenhuma falha** (antes desta ronda de estabilização, a mesma bateria
+  tinha uma probabilidade real de mostrar 1 falha isolada, sempre no mesmo sítio, nunca uma regressão real).
+  Ficheiros alterados nesta ronda: `tests/db.test.js` (mais 3 testes),
+  `tests/e2e/modules/17-farma-aprender.mjs`, `tests/e2e/modules/09-poupanca.mjs`,
+  `tests/e2e/modules/15-i18n.mjs`. Sincronizado na pasta `central multifarmácia` do PC do Ivo.
+
 ## Plano de trabalho
 
 - ~~Desenhar o modelo de dados multi-farmácia sobre Netlify Blobs (tenants, sessões JWT, namespacing).~~ Feito.
@@ -3325,6 +3452,18 @@ sem nenhuma API externa de IA.
   que só leem `config` do estado partilhado (`catalogo-produtos.html`, `devolucao-frio.html`,
   `mapa-cardiovascular.html`, `medela.html`, `reservas.html`) e `src/manutencao.js`/`src/usoLeitura.js` —
   não tocados nesta ronda, deliberadamente fora do âmbito acordado com o Ivo.
+- ~~Bug crítico: um serviço recém-criado desaparecia sozinho ao fim de segundos (queixa direta do Ivo,
+  "há efetivamente problemas na memória").~~ Feito (2026-09-24) — ver ponto 57: gravações concorrentes de
+  dois computadores da mesma farmácia podiam apagar-se uma à outra (bug pré-existente, confirmado não
+  relacionado com os pontos 55/56); corrigido em `src/db.js` com um merge por diferença em vez de
+  substituição total do array. Confirmado com uma segunda ronda de testes minuciosa, a pedido do Ivo:
+  +3 testes de integração ao bug (categorias, reordenação, três abas), auditoria ao código à procura de
+  uma ligação com o ecrã "A aplicação não carregou" (nenhuma confirmada), e 2 instabilidades pré-existentes
+  na PRÓPRIA bateria de testes e2e (não na aplicação) encontradas e corrigidas — ver o final do ponto 57.
+  **741/741 testes unitários e 535/535 verificações e2e, confirmado por 3 corridas completas consecutivas.**
+  Fica em aberto, por falta de informação suficiente para investigar mais: o ecrã intermitente "A aplicação
+  não carregou" que o Ivo mostrou em captura de ecrã — pode ou não estar relacionado; precisa de um erro de
+  consola capturado da próxima vez que acontecer.
 - Fase 4 do plano "FARMA aprende a pensar" (ponto 41/42) — pesquisa pontual na internet, só informação
   pública (ex.: preço/princípio ativo de um medicamento), nunca dados de utentes, nunca uma IA externa.
   Candidato identificado: `transparencia.sns.gov.pt` (Opendatasoft, plausivelmente com CORS) — mas este

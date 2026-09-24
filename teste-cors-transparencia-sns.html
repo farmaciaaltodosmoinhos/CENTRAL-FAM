@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8">
+<title>Teste de ligação — transparencia.sns.gov.pt (Fase 4 FARMA)</title>
+<style>
+  body{ font-family: -apple-system, "Segoe UI", Arial, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 20px; color:#1c2521; }
+  h1{ font-size: 20px; }
+  p{ line-height: 1.5; }
+  button{ padding: 10px 20px; font-size: 15px; border-radius: 8px; border: 1px solid #2b7a4b; background: #e3f2e8; color:#1f543e; cursor:pointer; }
+  button:hover{ background:#d0e9da; }
+  input{ padding: 8px 10px; font-size: 15px; border-radius: 6px; border: 1px solid #ccc; width: 220px; }
+  pre{ background: #f6f5f0; border: 1px solid #dcdcd2; border-radius: 8px; padding: 14px; overflow:auto; white-space: pre-wrap; word-break: break-word; font-size: 12.5px; }
+  .ok{ color:#1f7a4d; font-weight:700; }
+  .erro{ color:#a4342a; font-weight:700; }
+  .campo{ margin: 18px 0; }
+</style>
+</head>
+<body>
+  <h1>Teste de ligação — Transparência SNS (Fase 4 da FARMA)</h1>
+  <p>
+    Isto é só um teste de 30 segundos, não faz parte da app. Serve para confirmar, a partir do TEU browser
+    (o sandbox de desenvolvimento não consegue fazer isto), se o site <code>transparencia.sns.gov.pt</code>
+    aceita pedidos vindos de fora dele mesmo (CORS) — e, já agora, mostra os nomes reais dos campos do
+    medicamento/preço, para eu escrever o código certo da primeira vez.
+  </p>
+  <p><b>Como usar:</b> guarda este ficheiro no teu computador e abre-o a fazer duplo-clique (funciona sem
+    precisar de nenhum servidor). Escreve o nome de um medicamento e carrega em "Testar".</p>
+
+  <div class="campo">
+    <input id="termo" type="text" value="paracetamol" placeholder="nome do medicamento">
+    <button id="btnTestar">Testar</button>
+  </div>
+
+  <div id="resultado"></div>
+
+  <script>
+    const DATASET = 'preco-medio-por-embalagem';
+    const BASE = 'https://transparencia.sns.gov.pt/api/explore/v2.1/catalog/datasets/' + DATASET + '/records';
+
+    document.getElementById('btnTestar').addEventListener('click', testar);
+
+    async function testar() {
+      const termo = document.getElementById('termo').value.trim();
+      const resultadoEl = document.getElementById('resultado');
+      resultadoEl.innerHTML = '<p>A testar…</p>';
+
+      const url = BASE + '?limit=3&where=' + encodeURIComponent('suggest(substancia_activa_dci, "' + termo + '")');
+      const urlSimples = BASE + '?limit=3&q=' + encodeURIComponent(termo);
+
+      // 1ª tentativa: pesquisa por texto livre (q=), que não depende de eu adivinhar o nome exato do campo
+      try {
+        const res = await fetch(urlSimples);
+        const texto = await res.text();
+        let json = null;
+        try { json = JSON.parse(texto); } catch (e) {}
+
+        if (!res.ok) {
+          resultadoEl.innerHTML =
+            '<p class="erro">O pedido chegou ao servidor mas voltou com erro HTTP ' + res.status + '.</p>' +
+            '<pre>' + escapeHtml(texto.slice(0, 2000)) + '</pre>' +
+            '<p>Copia isto e envia-me — já é suficiente para eu ajustar o pedido.</p>';
+          return;
+        }
+
+        const registos = json && json.results ? json.results : [];
+        if (registos.length === 0) {
+          resultadoEl.innerHTML =
+            '<p class="ok">✓ Sem erro de CORS — o site respondeu normalmente (HTTP ' + res.status + ').</p>' +
+            '<p>Mas não veio nenhum resultado para "' + escapeHtml(termo) + '". Experimenta outro nome, ou envia-me este resultado bruto:</p>' +
+            '<pre>' + escapeHtml(texto.slice(0, 3000)) + '</pre>';
+          return;
+        }
+
+        const campos = Object.keys(registos[0]);
+        resultadoEl.innerHTML =
+          '<p class="ok">✓ Funcionou! Sem erro de CORS, e vieram ' + registos.length + ' resultado(s).</p>' +
+          '<p><b>Nomes dos campos encontrados:</b> ' + escapeHtml(campos.join(', ')) + '</p>' +
+          '<p><b>Primeiro registo (envia-me isto tal como está):</b></p>' +
+          '<pre>' + escapeHtml(JSON.stringify(registos[0], null, 2)) + '</pre>';
+      } catch (err) {
+        resultadoEl.innerHTML =
+          '<p class="erro">✗ Falhou: ' + escapeHtml(err.message) + '</p>' +
+          '<p>Se a mensagem falar em "CORS", "blocked" ou "Failed to fetch", é provavelmente mesmo um ' +
+          'bloqueio de CORS — envia-me a mensagem exata (podes abrir a consola do browser com F12 para ' +
+          'ver o erro completo) e ficamos a saber que este candidato não serve sem passar por um servidor ' +
+          'nosso a fazer de intermediário.</p>';
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    }
+  </script>
+</body>
+</html>
