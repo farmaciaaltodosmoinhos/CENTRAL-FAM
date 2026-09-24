@@ -31,6 +31,36 @@
  * novo. Um PUT sem esse cabeçalho (compatibilidade com um cliente antigo,
  * ainda não atualizado) continua a funcionar exatamente como antes — sem
  * bloqueio nenhum — para nunca partir um módulo esquecido nesta ronda.
+ *
+ * Ponto 55 (sincronização lenta / gravações perdidas — queixa direta do
+ * Ivo): até aqui, um PUT tinha de incluir SEMPRE servicos, categorias e
+ * config (ver a validação abaixo) — o que obrigava cada um dos 7 módulos
+ * que gravam aqui (AUE, Manipulados, Documentos, Gabinete, PIM, Stocks,
+ * Devoluções a Armazenistas) a reenviar o ESTADO INTEIRO da farmácia (TODOS
+ * os módulos, não só o seu) a cada gravação, mesmo para mudar um único
+ * campo — o próprio merge abaixo já tornava isso desnecessário, mas a
+ * validação impedia um corpo mais pequeno. À medida que uma farmácia
+ * acumula dados (utentes, pedidos, documentos...), isto tornava CADA
+ * gravação, de QUALQUER módulo, cada vez mais lenta — e um pedido lento tem
+ * mais hipótese de nunca chegar a completar-se (aba fechada, navegação
+ * para outro módulo, falha de rede a meio) antes de o utilizador ver a
+ * confirmação. Agora um PUT pode trazer só as chaves que está mesmo a
+ * mudar (ex.: { aue: {...} }) — servicos/categorias/config, se vierem,
+ * continuam validados quanto ao tipo, mas deixam de ser obrigatórios; os
+ * módulos foram atualizados para só enviarem a sua própria fatia.
+ *
+ * Ponto 56 (continuação do ponto 55 — a mesma queixa de lentidão, agora do
+ * lado da LEITURA): o ponto 55 encolheu o PUT, mas cada `fetchEstado()`
+ * continuava a fazer um GET do estado INTEIRO, mesmo quando só precisava de
+ * ler a sua própria fatia (ex.: o AUE só precisa de `aue` + `config`, nunca
+ * de `manipulados`/`documentos`/etc.) — e isto acontece não só a cada
+ * gravação, mas também no arranque de cada módulo e na atualização periódica
+ * de fundo da Central (a cada 25s). Um GET com `?campos=aue,config` (nomes
+ * separados por vírgula) devolve agora só essas chaves de topo, em vez do
+ * estado completo; SEM o parâmetro `campos`, o comportamento continua
+ * exatamente igual ao de sempre (estado completo) — nenhum cliente antigo
+ * ou ainda não atualizado (ex.: as ferramentas mais simples que só leem a
+ * marca/nome da farmácia) precisa de mudar nada.
  */
 import { getStore } from "@netlify/blobs";
 import { autenticarPedido } from "./_lib/auth.js";
@@ -84,9 +114,22 @@ export async function handleRequest(request, getStoreImpl) {
 
   if (request.method === "GET") {
     try {
-      const estado = await store.get(blobKey, { type: "json" });
+      const estado = (await store.get(blobKey, { type: "json" })) || ESTADO_VAZIO;
       const rev = await lerRev(store, sessao.tenantId);
-      return jsonResponse(estado || ESTADO_VAZIO, 200, { "x-estado-rev": String(rev) });
+      // Ponto 56: `?campos=aue,config` devolve só essas chaves de topo (as
+      // que não existirem no estado ficam simplesmente de fora — nunca um
+      // erro, para um módulo pedir uma chave que a farmácia ainda não tem
+      // sem ter de tratar isso como caso especial). Sem o parâmetro, devolve
+      // o estado completo — exatamente como sempre devolveu.
+      const camposParam = new URL(request.url).searchParams.get("campos");
+      let resultado = estado;
+      if (camposParam) {
+        resultado = {};
+        for (const campo of camposParam.split(",").map((c) => c.trim()).filter(Boolean)) {
+          if (Object.prototype.hasOwnProperty.call(estado, campo)) resultado[campo] = estado[campo];
+        }
+      }
+      return jsonResponse(resultado, 200, { "x-estado-rev": String(rev) });
     } catch (err) {
       return jsonResponse({ error: "Falha ao ler o estado.", detail: String(err) }, 500);
     }
@@ -101,8 +144,21 @@ export async function handleRequest(request, getStoreImpl) {
     let body;
     try { body = await request.json(); } catch { return jsonResponse({ error: "Corpo inválido: JSON malformado." }, 400); }
 
-    if (!body || typeof body !== "object" || !Array.isArray(body.servicos) || !Array.isArray(body.categorias)) {
-      return jsonResponse({ error: "Corpo inválido: esperado { servicos: [], categorias: [], config: {} }." }, 400);
+    // Ponto 55: servicos/categorias/config deixaram de ser obrigatórios —
+    // um módulo que só muda a sua própria fatia (ex.: { aue: {...} }) já
+    // não precisa de reenviar o resto. Continuam validados QUANDO presentes,
+    // para nunca gravar um tipo errado por engano.
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return jsonResponse({ error: "Corpo inválido: esperado um objeto JSON." }, 400);
+    }
+    if (body.servicos !== undefined && !Array.isArray(body.servicos)) {
+      return jsonResponse({ error: "Corpo inválido: 'servicos', se vier, tem de ser uma lista." }, 400);
+    }
+    if (body.categorias !== undefined && !Array.isArray(body.categorias)) {
+      return jsonResponse({ error: "Corpo inválido: 'categorias', se vier, tem de ser uma lista." }, 400);
+    }
+    if (body.config !== undefined && (typeof body.config !== "object" || body.config === null || Array.isArray(body.config))) {
+      return jsonResponse({ error: "Corpo inválido: 'config', se vier, tem de ser um objeto." }, 400);
     }
     try {
       const revEsperada = request.headers.get("x-estado-rev");
@@ -124,9 +180,13 @@ export async function handleRequest(request, getStoreImpl) {
       // módulo (ex. Manipulados) grava só a fatia que conhece — sem isto, um
       // módulo que desconheça o campo de outro (ex. o painel principal a
       // gravar servicos/categorias/config sem saber de "manipulados") apagava
-      // sempre esse campo a cada gravação sua.
+      // sempre esse campo a cada gravação sua. Ponto 55: agora que
+      // servicos/categorias/config também são opcionais, uma chave AUSENTE
+      // do corpo fica tal como estava (spread simples) — só uma chave
+      // PRESENTE é que substitui a anterior; nunca há necessidade de forçar
+      // nenhuma delas a vir sempre de `body`.
       const atual = (await store.get(blobKey, { type: "json" })) || ESTADO_VAZIO;
-      const payload = { ...atual, ...body, servicos: body.servicos, categorias: body.categorias, config: body.config || {} };
+      const payload = { ...atual, ...body };
       const revNova = revAtual + 1;
       await store.setJSON(blobKey, payload);
       await store.set(revKey(sessao.tenantId), String(revNova));

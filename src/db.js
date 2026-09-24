@@ -49,9 +49,19 @@ let cacheLoaded = false;
 // que esse outro gravou entretanto.
 let estadoRev = null;
 
+// Ponto 56 (continuação do ponto 55, agora do lado do GET): o shell só lê
+// servicos/categorias/config do estado partilhado (nunca aue/manipulados/
+// etc., que só os módulos usam) — mas até aqui `ensureLoaded()` pedia
+// sempre o estado INTEIRO, tanto no arranque como na atualização periódica
+// de fundo a cada 25s (ver `recarregarDoServidor()` em actions.js). Como
+// isto é o pedido mais frequente de toda a app (todas as abas abertas, a
+// cada 25s), pedir só estas 3 chaves é o que mais reduz o tráfego de fundo
+// à medida que a farmácia acumula dados nos módulos.
+const CAMPOS_SHELL = "servicos,categorias,config";
+
 async function ensureLoaded() {
   if (cacheLoaded) return cache;
-  const res = await fetchAutenticado(API_URL, { headers: { Accept: "application/json" } });
+  const res = await fetchAutenticado(`${API_URL}?campos=${CAMPOS_SHELL}`, { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`Não foi possível ler os dados do servidor (HTTP ${res.status}).`);
   estadoRev = res.headers.get("x-estado-rev");
   const data = await res.json();
