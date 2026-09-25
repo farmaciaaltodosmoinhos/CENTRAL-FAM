@@ -17,7 +17,10 @@
 // agora para forçar todos os browsers já com a app aberta a apanhar o
 // código corrigido logo na próxima visita, em vez de ficarem presos ao
 // comportamento antigo indefinidamente.
-const CACHE_VERSION = "central-farmacia-v4.1.0";
+// Ponto 58: src/actions.js mudou substancialmente outra vez (o botão
+// "Atualizar" podia apagar um serviço acabado de criar) — mesma lógica,
+// subida de novo.
+const CACHE_VERSION = "central-farmacia-v4.2.0";
 const APP_SHELL = [
   "./",
   "./index.html",

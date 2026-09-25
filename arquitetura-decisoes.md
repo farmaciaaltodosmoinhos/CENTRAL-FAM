@@ -3357,6 +3357,33 @@ sem nenhuma API externa de IA.
   nomeadamente confirmar que a publicação incluiu mesmo `src/db.js` (não só alguns ficheiros) e, já sem
   suposições, tentar reproduzir o desaparecimento diretamente no site publicado.
 
+## Ponto 58 — causa real (confirmada) do "serviço desaparece": `recarregarDoServidor()` substituía o estado local a meio de uma gravação pendente, numa ÚNICA aba
+
+**Contexto.** Depois do ponto 57 (gravações concorrentes entre ABAS/computadores diferentes) estar corrigido, testado e **confirmado já publicado ao vivo** — o Ivo colou o conteúdo completo de `src/db.js` tal como servido por `central-fam.netlify.app` (o seu site de teste, numa conta Netlify diferente da conta principal), e correspondia byte a byte à correção do ponto 57, incluindo o bloco de comentário, `calcularDiff`/`aplicarDiff` e o `putAll` por diferença — o Ivo confirmou que o problema **continuava a acontecer nesse mesmo site atualizado**: "Nao encontraste nada, eu tenho outra versão publicada actualizada para teste e o problema persiste." Isto invalidou a explicação anterior (site desatualizado / cache do service worker) como única causa: tinha de existir um segundo bug, distinto do ponto 57, com o mesmo sintoma.
+
+**Investigação.** Releitura cuidada de `src/actions.js`/`src/app.js` focada em tudo o que pode SUBSTITUIR (não só adicionar/atualizar) o estado local de `servicos`/`categorias`. Encontrado: `recarregarDoServidor()` (chamada pelo botão "Atualizar" da sidebar, pelo poll periódico de 25s, e ao voltar à aba) faz sempre `await dataStore.refresh(); await actions.iniciar();` — e `iniciar()` despacha `INIT_STATE` com `servicos`/`categorias` **inteiros**, vindos do que o servidor acabou de devolver. Isto é uma substituição total do store, não um merge.
+
+O botão "Atualizar" (`btnRefresh`, `src/app.js`) chama `recarregarDoServidor()` **sem nenhuma proteção de `syncStatus`** — ao contrário do poll periódico e do `visibilitychange`, que só disparam quando `syncStatus === "synced"`. Ora, criar um serviço (`criarServico()`) despacha a alteração no store local de imediato (otimista, via `ADD_SERVICO`) mas só a GRAVA no servidor 350ms depois (`scheduleSync`, debounce para agrupar escritas rápidas seguidas). Um utilizador cauteloso que clique em "Atualizar" logo a seguir a criar algo — comportamento perfeitamente normal, "só para confirmar que gravou" — cai exatamente nessa janela de 350ms + a própria chamada de rede.
+
+**Reprodução determinística (confirmada, não é só teoria).** Criado um script Playwright dedicado (`tests/e2e/repro-refresh-apaga-servico.mjs`, fora da bateria oficial) que: 1) regista uma farmácia nova, 2) cria um serviço via UI, 3) clica logo a seguir em "Atualizar" (usando um clique real no DOM, não `page.click()` do Playwright — este tem uma pequena espera de "estabilidade visual" que, por si só, já era suficiente para escapar da janela de 350ms e esconder o bug por completo; um clique de rato real não tem essa espera). Contra o código ANTES desta correção: o serviço desaparece da UI de imediato e, pior, a gravação já agendada (que ainda dispara 350ms depois, lendo o estado do store NESSE momento, já sem o serviço) grava esse estado incompleto no servidor — **perda definitiva, não só visual**. Instrumentação de rede confirmou a ordem exata: `GET /api/data` (do refresh) completa ANTES do `PUT` da gravação do serviço, pelo que o `INIT_STATE` que se segue reflete um servidor que ainda não tinha o serviço.
+
+**Correção.** `src/actions.js`: nova função `garantirEstadoLocalGravado()`, chamada no início de `recarregarDoServidor()`, que força e espera por QUALQUER escrita ainda pendente antes de ir buscar o estado ao servidor:
+- se houver um `scheduleSync` agendado (temporizador de 350ms ainda não disparado), cancela-o e força a gravação (`flushSync`) já, esperando por ela;
+- se já houver uma gravação em curso (`flushSync` já a decorrer, por qualquer via — incluindo `visibilitychange`/`beforeunload`), espera que essa termine;
+- se a farmácia for nova e o "seeding" dos atalhos dos módulos (`criarAtalhosModulos`, ver `iniciar()`) ainda estiver a gravar-se em segundo plano — esta gravação sempre ignorou `syncStatus` por completo, o que era um segundo ponto cego, menor mas real, para as proteções já existentes do poll periódico/`visibilitychange` — espera também por ela.
+
+Isto torna `recarregarDoServidor()` seguro **para todos os chamadores** (botão "Atualizar", poll periódico, `visibilitychange`), sem depender de cada um lembrar-se de verificar `syncStatus` corretamente — a proteção passou a viver no sítio que faz a substituição perigosa, não em cada sítio que a desencadeia.
+
+**Verificação.**
+- `tests/e2e/repro-refresh-apaga-servico.mjs`: confirma a reprodução do bug com a correção desligada (falha de forma determinística, incluindo perda no servidor) e a correção depois de religada (passa, serviço mantido na UI e no servidor).
+- `tests/actions.test.js` (novo, 4 testes unitários, sem browser — `createActions()` chamado diretamente com um `dataStore` falso cujo relógio o teste controla): criar um serviço e chamar `recarregarDoServidor()` logo a seguir mantém o serviço (na UI e no servidor); sem nada pendente, o refresh não faz nenhuma gravação extra; duas criações seguidas dentro do mesmo debounce sobrevivem ambas; e o caso da farmácia nova — um refresh que caia a meio do "seeding" dos atalhos dos módulos espera por ele (confirmado que, sem isto, os atalhos não desapareciam mas DUPLICAVAM-SE, com ids novos, porque o `iniciar()` chamado de dentro do refresh via a flag `atalhosModulosCriados` ainda por gravar). Todos os 4 testes confirmados a apanhar a regressão quando a correção correspondente é desligada, um de cada vez.
+- **745/745 testes unitários** (741 + 4 novos) e **535/535 verificações e2e**, bateria completa a correr sem nenhuma falha depois da correção.
+- `sw.js`: `CACHE_VERSION` subida de novo, de `central-farmacia-v4.1.0` para `central-farmacia-v4.2.0` (mesma lição do ponto 57: `src/actions.js` está na lista do "app shell" em cache `stale-while-revalidate`).
+
+Ficheiros alterados: `src/actions.js`, `sw.js`, `tests/actions.test.js` (novo), `tests/e2e/repro-refresh-apaga-servico.mjs` (novo, script de reprodução fora da bateria oficial).
+
+**Nota honesta:** isto NÃO invalida a correção do ponto 57 (gravações concorrentes entre computadores diferentes continua a ser um bug real que foi corrigido) nem a subida da `CACHE_VERSION` já feita nesse ponto (continua necessária para o código chegar a todos os computadores). São duas causas distintas, com o mesmo sintoma visível, ambas agora corrigidas e testadas. Falta ainda: publicar esta correção no(s) site(s) do Ivo e confirmar com ele que o problema desaparece mesmo depois de publicada — só o Ivo pode confirmar isso no seu ambiente real.
+
 ## Plano de trabalho
 
 - ~~Desenhar o modelo de dados multi-farmácia sobre Netlify Blobs (tenants, sessões JWT, namespacing).~~ Feito.
@@ -3494,19 +3521,23 @@ sem nenhuma API externa de IA.
   que só leem `config` do estado partilhado (`catalogo-produtos.html`, `devolucao-frio.html`,
   `mapa-cardiovascular.html`, `medela.html`, `reservas.html`) e `src/manutencao.js`/`src/usoLeitura.js` —
   não tocados nesta ronda, deliberadamente fora do âmbito acordado com o Ivo.
-- **AINDA NÃO CONFIRMADO COMO RESOLVIDO** — Bug crítico: um serviço recém-criado desaparecia sozinho ao
-  fim de segundos (queixa direta do Ivo, "há efetivamente problemas na memória"). Ver ponto 57: gravações
-  concorrentes de dois computadores da mesma farmácia podiam apagar-se uma à outra (bug pré-existente,
-  confirmado não relacionado com os pontos 55/56); corrigido em `src/db.js` com um merge por diferença em
-  vez de substituição total do array — correção verificada e testada (**741/741 testes unitários e
-  535/535 verificações e2e**, 3 corridas consecutivas). O Ivo publicou esta correção no site e reportou
-  (2026-09-24, mais tarde no mesmo dia) que o problema continua a acontecer. Causa provável identificada e
-  corrigida: `sw.js` (service worker) nunca teve a sua `CACHE_VERSION` subida quando `src/db.js` mudou
-  (nos pontos 55, 56 e agora 57), pelo que um computador com a app já aberta antes da publicação continua
-  preso ao código antigo, já carregado em memória — publicar no servidor não lhe muda nada sem uma recarga
-  a sério. `CACHE_VERSION` subida; por confirmar com o Ivo se, depois de publicar esta versão E recarregar
-  a sério (não só navegar) em cada computador, o problema desaparece mesmo. Se persistir mesmo assim, a
-  causa é outra e a investigação continua. Fica também em aberto, por falta de informação suficiente: o
+- **AINDA NÃO CONFIRMADO COMO RESOLVIDO PELO IVO** (correção nova aplicada e testada, falta confirmação no
+  ambiente real dele) — Bug crítico: um serviço recém-criado desaparecia sozinho ao fim de segundos
+  (queixa direta do Ivo). Duas causas distintas encontradas e corrigidas, com o mesmo sintoma: (1) ponto
+  57 — gravações concorrentes de dois computadores da mesma farmácia podiam apagar-se uma à outra;
+  corrigido em `src/db.js` com merge por diferença. O Ivo confirmou (colando o `src/db.js` publicado em
+  `central-fam.netlify.app`) que esta correção já estava mesmo ao vivo — e reportou que o problema
+  persistia mesmo assim, o que levou à investigação de uma segunda causa. (2) **ponto 58 — a causa
+  encontrada e reproduzida de forma determinística**: `recarregarDoServidor()` (o botão "Atualizar" da
+  sidebar, sem NENHUMA proteção) substituía o estado local inteiro pelo do servidor mesmo quando uma
+  criação recente ainda estava na janela de 350ms de gravação em debounce, apagando-a — numa ÚNICA aba,
+  sem concorrência entre computadores nenhuma. Corrigido com `garantirEstadoLocalGravado()`, que força e
+  espera por qualquer gravação pendente antes de qualquer refresh. Verificado com um script de reprodução
+  Playwright dedicado (falha de forma determinística sem a correção, passa com ela) e 4 testes unitários
+  novos — **745/745 testes unitários, 535/535 verificações e2e**. `CACHE_VERSION` do service worker subida
+  outra vez (v4.1.0 → v4.2.0), pela mesma razão do ponto 57 (`src/actions.js` também está no "app shell"
+  em cache). **Falta:** publicar esta correção e o Ivo confirmar, no seu ambiente real, que o problema
+  desaparece mesmo — só ele pode validar isso. Fica também em aberto, por falta de informação suficiente: o
   ecrã intermitente "A aplicação não carregou" que o Ivo mostrou em captura de ecrã — pode ou não estar
   relacionado; precisa de um erro de consola capturado da próxima vez que acontecer.
 - Fase 4 do plano "FARMA aprende a pensar" (ponto 41/42) — pesquisa pontual na internet, só informação
