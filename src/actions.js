@@ -84,14 +84,30 @@ function dataUrlParaBlob(dataUrl) {
 
 export function createActions(store, dataStore) {
   let syncTimer = null;
+  // Ponto 58: promessa da gravação (flushSync) atualmente em curso, se
+  // alguma — registada mesmo quando flushSync é chamado diretamente (fora
+  // do temporizador de 350ms, como em visibilitychange/beforeunload), para
+  // que `garantirEstadoLocalGravado()` consiga esperar por ela em vez de
+  // arriscar uma corrida com `recarregarDoServidor()`. Ver esse ponto para
+  // o bug que isto corrige (o botão "Atualizar" apagava da UI um serviço
+  // acabado de criar).
+  let flushEmCurso = null;
+  // Ponto 58: promessa do "seeding" dos atalhos dos módulos em segundo
+  // plano (ver criarAtalhosModulos aqui e o IIFE dentro de `iniciar()`),
+  // que grava diretamente em dataStore sem passar por scheduleSync/
+  // flushSync — sem isto rastreado, uma farmácia recém-criada tinha uma
+  // segunda janela (independente da acima) em que um refresh podia
+  // substituir o estado local a meio dessa gravação.
+  let atalhosSeedEmCurso = null;
 
   // Tradução das mensagens/toasts centrais (ponto 24, multi-idioma) — lê
   // sempre o idioma atual do estado, para que uma mudança de idioma a meio
   // da sessão se reflita de imediato em qualquer ação seguinte.
   function tc(chave, vars) { return t(chave, store.getState().idioma || DEFAULT_IDIOMA, vars); }
 
-  async function flushSync(reason) {
+  async function flushSyncInterno(reason) {
     clearTimeout(syncTimer);
+    syncTimer = null;
     try {
       const st = store.getState();
       await dataStore.putAll("servicos", st.servicos.map(stripTransient));
@@ -104,10 +120,42 @@ export function createActions(store, dataStore) {
       bus.emit("toast:show", { type: "err", msg: tc("toast.erro_sync") });
     }
   }
+  function flushSync(reason) {
+    flushEmCurso = flushSyncInterno(reason).finally(() => { flushEmCurso = null; });
+    return flushEmCurso;
+  }
   function scheduleSync(reason) {
     store.dispatch({ type: "SET_SYNC_STATUS", status: "syncing" });
     clearTimeout(syncTimer);
     syncTimer = setTimeout(() => flushSync(reason), 350);
+  }
+
+  /**
+   * Ponto 58 — garante que não fica nenhuma alteração local por gravar
+   * (nem em debounce à espera dos 350ms, nem uma gravação já em curso, nem
+   * o "seeding" dos atalhos dos módulos em segundo plano) antes de uma
+   * operação que vai SUBSTITUIR o estado local pelo que vier do servidor.
+   *
+   * Bug que isto corrige: `recarregarDoServidor()` (chamado pelo botão
+   * "Atualizar" — sem NENHUMA proteção — e, com uma proteção mais fraca,
+   * pelo poll periódico de 25s e pelo `visibilitychange`) ia buscar o
+   * estado ao servidor e substituía `servicos`/`categorias` inteiros no
+   * store local. Se isto acontecesse enquanto uma criação/edição recente
+   * ainda não tinha chegado ao servidor (janela de 350ms de debounce + a
+   * própria chamada de rede), o serviço acabado de criar desaparecia da UI
+   * — exatamente o sintoma "o novo serviço fica uns segundos e depois
+   * desaparece". Reproduzido de forma determinística e corrigido aqui; ver
+   * arquitetura-decisoes.md (ponto 58) para a reprodução e mais detalhe.
+   */
+  async function garantirEstadoLocalGravado() {
+    if (syncTimer) {
+      clearTimeout(syncTimer);
+      syncTimer = null;
+      await flushSync("flush-antes-de-recarregar");
+    } else if (flushEmCurso) {
+      await flushEmCurso;
+    }
+    if (atalhosSeedEmCurso) await atalhosSeedEmCurso;
   }
 
   const actions = {
@@ -157,7 +205,7 @@ export function createActions(store, dataStore) {
         const resultado = criarAtalhosModulos(servicos, categoriasBase);
         if (resultado) { servicosFinal = resultado.servicos; categoriasFinal = resultado.categorias; }
         const categoriasMudaram = categoriasFinal !== categoriasBase;
-        (async () => {
+        atalhosSeedEmCurso = (async () => {
           try {
             if (categoriasMudaram) await dataStore.putAll("categorias", categoriasFinal);
             if (resultado) await dataStore.putAll("servicos", servicosFinal.map(stripTransient));
@@ -165,7 +213,7 @@ export function createActions(store, dataStore) {
           } catch (err) {
             console.error("Erro ao gravar os atalhos dos módulos:", err);
           }
-        })();
+        })().finally(() => { atalhosSeedEmCurso = null; });
       }
 
       store.dispatch({
@@ -192,6 +240,7 @@ export function createActions(store, dataStore) {
      */
     async recarregarDoServidor() {
       try {
+        await garantirEstadoLocalGravado();
         await dataStore.refresh();
         await actions.iniciar();
         bus.emit("sync:remote-refresh", {});
