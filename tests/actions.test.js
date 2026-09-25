@@ -102,6 +102,37 @@ describe("actions.js — recarregarDoServidor() não apaga uma escrita ainda pen
     assert.equal(dataStore.servidor.servicos[0].nome, "Serviço Novo");
   });
 
+  test("se a gravação forçada falhar (ex.: erro de rede momentâneo só na escrita), o refresh ABORTA em vez de apagar a alteração local ainda não confirmada", async () => {
+    const dataStore = fakeDataStore({
+      categorias: [{ id: "cat_indefinida", nome: "Categoria Indefinida", sistema: true, ordem: 9999 }],
+      config: { atalhosModulosCriados: true }
+    });
+    const store = novoStore();
+    const actions = createActions(store, dataStore);
+    await actions.iniciar();
+
+    await actions.criarServico({ nome: "Serviço Frágil", tipo: "url", url: "https://x.pt" });
+    assert.equal(store.getState().servicos.length, 1, "o dispatch otimista já devia ter colocado o serviço no store local");
+
+    // simula a gravação a falhar (ex.: um erro de rede momentâneo só no
+    // pedido de escrita) — flushSyncInterno apanha isto sozinho e só marca
+    // syncStatus:"error", nunca rejeita, por isso é preciso simular
+    // exatamente essa falha silenciosa para testar a proteção extra.
+    dataStore.putAll = async () => { throw new Error("falha de rede simulada, só na escrita"); };
+
+    dataStore.chamadas.length = 0;
+    await actions.recarregarDoServidor(); // nunca rejeita (o próprio recarregarDoServidor apanha o erro), mas não pode ter avançado para o refresh
+
+    assert.equal(store.getState().syncStatus, "error", "o estado de sincronização tem de refletir a falha");
+    assert.equal(
+      store.getState().servicos.length, 1,
+      "o serviço criado NÃO pode desaparecer da UI só porque a gravação falhou e um refresh foi tentado a seguir"
+    );
+    assert.equal(store.getState().servicos[0].nome, "Serviço Frágil");
+    const chegouARefrescar = dataStore.chamadas.some((c) => c.op === "refresh" || c.op === "getAll");
+    assert.equal(chegouARefrescar, false, "o refresh tem de abortar ANTES de ir buscar o estado ao servidor, nunca substituir a UI por um retrato sem a alteração falhada");
+  });
+
   test("sem nenhuma escrita pendente, recarregarDoServidor() não faz nenhuma gravação extra (continua \"barato\")", async () => {
     const dataStore = fakeDataStore({
       categorias: [{ id: "cat_indefinida", nome: "Categoria Indefinida", sistema: true, ordem: 9999 }],
