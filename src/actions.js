@@ -156,6 +156,23 @@ export function createActions(store, dataStore) {
       await flushEmCurso;
     }
     if (atalhosSeedEmCurso) await atalhosSeedEmCurso;
+
+    // Camada extra de proteção: `flushSyncInterno` apanha os seus próprios
+    // erros (para nunca travar a app com uma exceção não tratada) e só
+    // marca `syncStatus: "error"` — nunca rejeita esta promessa. Isto quer
+    // dizer que, sem esta verificação, uma gravação que FALHASSE mesmo
+    // aqui (ex.: um erro de rede momentâneo só no pedido de escrita, com o
+    // pedido de LEITURA a seguir a funcionar normalmente) passava
+    // silenciosamente por despercebida, e o refresh seguinte ia buscar ao
+    // servidor um retrato que ainda não tinha a alteração — substituindo-a
+    // na UI por engano, o mesmo sintoma que este ponto inteiro corrige.
+    // Aborta aqui em vez de arriscar isso: mais vale o refresh falhar
+    // (o utilizador vê o aviso de erro de sincronização já existente e
+    // pode tentar de novo) do que apagar silenciosamente uma alteração
+    // real que ainda não chegou ao servidor.
+    if (store.getState().syncStatus === "error") {
+      throw new Error("Gravação pendente falhou — refresh cancelado para não apagar alterações locais ainda não confirmadas pelo servidor.");
+    }
   }
 
   const actions = {
