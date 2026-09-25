@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FARMA IA · Central Operacional</title>
+<link rel="stylesheet" href="../assets/module-chrome.css">
+<style>
+  :root{
+    --brand:#2b7a4b;
+    --brand-deep:#1f543e;
+    --brand-soft:#e3f2e8;
+    --ink:#1c2521;
+    --ink-soft:#4a5650;
+    --paper:#f6f5f0;
+    --panel:#ffffff;
+    --line:#dcdcd2;
+    --line-soft:#ececE4;
+    --urgente:#a4342a;
+    --urgente-bg:#fbebe8;
+    --urgente-line:#eec3bc;
+    --aviso:#9a6b16;
+    --aviso-bg:#fbf1dc;
+    --aviso-line:#eed9a8;
+    --ok:#1f7a4d;
+    --ok-bg:#e6f4ec;
+    --ok-line:#b9e0c8;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(20,30,25,.05), 0 6px 20px -8px rgba(20,30,25,.14);
+    --sans:"Inter","Helvetica Neue",Arial,sans-serif;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);min-height:100vh;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:920px;margin:0 auto;padding:26px 18px 90px;}
+
+  header.top{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-bottom:18px;border-bottom:2px solid var(--brand-deep);margin-bottom:20px;flex-wrap:wrap;}
+  .brandmark{display:flex;align-items:center;gap:12px;}
+  .brandmark img{width:42px;height:42px;border-radius:11px;object-fit:cover;box-shadow:var(--shadow);}
+  .brandmark .glyph{width:42px;height:42px;border-radius:11px;background:linear-gradient(155deg,var(--brand),var(--brand-deep));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px;box-shadow:var(--shadow);}
+  h1{font-size:22px;font-weight:800;margin:0;letter-spacing:-0.01em;color:var(--brand-deep);}
+  h1 small{display:block;font-weight:600;font-size:12px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-top:3px;}
+  .farmacia-tag{font-size:12px;font-weight:600;color:var(--ink-soft);}
+
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px;}
+  .panel-head{padding:16px 18px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+  .panel-head h2{font-size:15px;margin:0;font-weight:700;}
+  .panel-head p{margin:2px 0 0;font-size:12px;color:var(--ink-soft);}
+  .panel-body{padding:16px 18px;}
+
+  .resumo-chips{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+  .chip{border-radius:999px;padding:6px 14px;font-size:12px;font-weight:700;border:1px solid;}
+  .chip.urgente{color:var(--urgente);background:var(--urgente-bg);border-color:var(--urgente-line);}
+  .chip.aviso{color:var(--aviso);background:var(--aviso-bg);border-color:var(--aviso-line);}
+  .chip.ok{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-line);}
+
+  .alerta-card{border:1px solid var(--line);border-left-width:4px;border-radius:10px;padding:12px 14px;margin-bottom:10px;background:var(--panel);}
+  .alerta-card.urgente{border-left-color:var(--urgente);}
+  .alerta-card.aviso{border-left-color:var(--aviso);}
+  .alerta-card .linha1{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+  .alerta-card h3{font-size:13.5px;margin:0;font-weight:700;}
+  .alerta-card p{margin:4px 0 0;font-size:12.5px;color:var(--ink-soft);line-height:1.4;}
+  .sev-badge{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;}
+  .sev-badge.urgente{color:#fff;background:var(--urgente);}
+  .sev-badge.aviso{color:#fff;background:var(--aviso);}
+  .mod-badge{font-size:10px;font-weight:700;color:var(--ink-soft);background:var(--brand-soft);padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em;}
+  .alerta-card .linha2{margin-top:8px;display:flex;align-items:center;gap:8px;}
+  .dispensar-btn{font-size:11px;font-weight:600;color:var(--ink-soft);background:none;border:1px solid var(--line);border-radius:999px;padding:3px 10px;cursor:pointer;}
+  .dispensar-btn:hover{border-color:var(--brand);color:var(--brand-deep);}
+  .dispensar-confirmado{font-size:11px;color:var(--ok);font-weight:600;}
+  .dispensados-nota{font-size:11.5px;color:var(--ink-soft);margin-bottom:10px;}
+  .dispensados-nota button{font-size:11.5px;color:var(--brand-deep);background:none;border:none;text-decoration:underline;cursor:pointer;padding:0;}
+
+  .vazio{padding:22px 4px;text-align:center;color:var(--ink-soft);font-size:13px;}
+  .vazio b{display:block;color:var(--ok);font-size:14px;margin-bottom:4px;}
+
+  .cerebro-bar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+  .cerebro-status{font-size:12px;color:var(--ink-soft);}
+  #chatLog{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;max-height:420px;overflow-y:auto;}
+  .msg{max-width:88%;padding:10px 13px;border-radius:12px;font-size:13.5px;line-height:1.5;}
+  .msg.pergunta{align-self:flex-end;background:var(--brand);color:#fff;border-bottom-right-radius:3px;}
+  .msg.resposta{align-self:flex-start;background:var(--brand-soft);color:var(--ink);border-bottom-left-radius:3px;}
+  .msg.resposta.sem-intent{background:#f0efe9;color:var(--ink-soft);}
+  .msg.resposta.aprendido{background:#eaf3ec;border:1px solid var(--ok-line);}
+  .msg.resposta.via-ia-local{background:#eef1fb;border:1px solid #c9d2f2;}
+  .msg.resposta.via-rede-neural{background:#f6eefb;border:1px solid #ddc7ec;}
+  .msg.resposta.a-pensar{background:#f0efe9;color:var(--ink-soft);font-style:italic;}
+  .acao-card{align-self:flex-start;max-width:88%;background:#fff;border:1px solid var(--ok-line);
+    border-radius:10px;padding:10px 12px;font-size:13px;display:flex;flex-direction:column;gap:8px;}
+  .acao-card .acao-botoes{display:flex;gap:8px;}
+  .acao-card button{font-size:12.5px;padding:5px 11px;border-radius:6px;border:none;cursor:pointer;}
+  .acao-card .confirmar{background:var(--ok);color:#fff;}
+  .acao-card .cancelar{background:#eee;color:var(--ink);}
+  .sugestoes-aprender{align-self:flex-start;max-width:88%;display:flex;flex-direction:column;gap:5px;}
+
+  /* ponto 42, fase 3 — revisão de perguntas não reconhecidas, agrupadas por
+     semelhança (agruparPerguntasSemelhantes). */
+  .revisao-nao-reconhecidas{margin-top:16px;padding-top:12px;border-top:1px solid var(--line-soft);font-size:12.5px;color:var(--ink-soft);}
+  .revisao-nao-reconhecidas summary{cursor:pointer;font-weight:600;list-style:none;display:flex;align-items:center;gap:6px;}
+  .revisao-nao-reconhecidas summary::-webkit-details-marker{display:none;}
+  .revisao-nao-reconhecidas summary::before{content:"▸";transition:transform .15s;}
+  .revisao-nao-reconhecidas[open] summary::before{transform:rotate(90deg);}
+  .lista-nao-reconhecidas{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+  .nrq-item{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 10px;}
+  .nrq-linha1{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .nrq-texto{font-size:13px;color:var(--ink);}
+  .nrq-contagem{font-size:11px;color:var(--ink-soft);white-space:nowrap;}
+  .nrq-variantes{font-size:11px;margin-top:2px;}
+  .nrq-ensinar{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+  .nrq-ensinar button{font-size:11.5px;padding:4px 9px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;}
+  .nrq-ensinar button:hover{background:var(--brand-soft);}
+  .sugestoes-aprender .rotulo{font-size:11px;color:var(--ink-soft);}
+  .sugestao-btn{font-size:11.5px;border:1px dashed var(--line);background:var(--panel);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--ink-soft);text-align:left;}
+  .sugestao-btn:hover{border-color:var(--brand);color:var(--brand-deep);border-style:solid;}
+  .exemplos{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
+  .exemplo-btn{font-size:11.5px;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:5px 11px;cursor:pointer;color:var(--ink-soft);}
+  .exemplo-btn:hover{border-color:var(--brand);color:var(--brand-deep);}
+  #memoriaInfo{font-size:11px;color:var(--ink-soft);margin-top:4px;}
+  .pergunta-form{display:flex;gap:8px;}
+  .pergunta-form input{flex:1;padding:10px 13px;border:1px solid var(--line);border-radius:10px;font-size:13.5px;font-family:var(--sans);}
+  .pergunta-form input:focus{outline:none;border-color:var(--brand);}
+  .btn-primary{background:var(--brand);color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:13.5px;font-weight:700;cursor:pointer;}
+  .btn-primary:hover{background:var(--brand-deep);}
+  .btn-ghost{background:none;border:1px solid var(--line);color:var(--ink-soft);border-radius:10px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;}
+  .btn-ghost:hover{border-color:var(--brand);color:var(--brand-deep);}
+
+  .oport-item{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+  .oport-item .linha1{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+  .oport-item h3{font-size:13.5px;margin:0;font-weight:700;}
+  .oport-item .contagem{font-size:12px;font-weight:800;color:var(--brand-deep);}
+  .oport-item p{margin:4px 0 0;font-size:12.5px;color:var(--ink-soft);line-height:1.4;}
+
+  #syncStatus{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-soft);font-weight:600;}
+  #syncStatus .dot{width:7px;height:7px;border-radius:50%;background:#e8b23d;}
+  #syncStatus.ok .dot{background:var(--ok);}
+  #syncStatus.fail .dot{background:var(--urgente);}
+
+  /* ponto 43 — aba "Aprender" (4 funções) */
+  .aprender-pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+  .aprender-pills .pill{font-size:12.5px;font-weight:700;padding:7px 13px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--ink-soft);cursor:pointer;}
+  .aprender-pills .pill.active{background:var(--brand);border-color:var(--brand);color:#fff;}
+  .aprender-sub{display:none;}
+  .aprender-sub.active{display:block;}
+  .aprender-sub h3{font-size:14px;margin:0 0 4px;font-weight:700;}
+  .aprender-sub p.desc{margin:0 0 14px;font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
+  .aprender-linha-acao{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+  .aprender-status{font-size:12px;color:var(--ink-soft);}
+  .aprender-status.erro{color:var(--urgente);}
+  .aprender-status.sucesso{color:var(--ok);}
+
+  .proposta-card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+  .proposta-card h4{font-size:13px;margin:0;font-weight:700;}
+  .proposta-card p{margin:4px 0 0;font-size:12px;color:var(--ink-soft);line-height:1.4;}
+  .proposta-card .evidencia{font-style:italic;}
+  .proposta-botoes{display:flex;gap:8px;margin-top:10px;}
+  .proposta-botoes button{font-size:11.5px;padding:5px 11px;border-radius:6px;border:none;cursor:pointer;font-weight:600;}
+  .proposta-botoes .aprovar{background:var(--ok);color:#fff;}
+  .proposta-botoes .rejeitar{background:#eee;color:var(--ink);}
+  .proposta-decidida{font-size:11.5px;font-weight:700;}
+  .proposta-decidida.aprovada_para_revisao{color:var(--ok);}
+  .proposta-decidida.rejeitada{color:var(--ink-soft);}
+
+  .relatorio-treino{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:12px;font-size:12.5px;line-height:1.7;}
+  .relatorio-treino b{color:var(--brand-deep);}
+  .toggle-linha{display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:12.5px;}
+
+  .drop-zone{border:2px dashed var(--line);border-radius:12px;padding:26px 18px;text-align:center;color:var(--ink-soft);font-size:13px;cursor:pointer;margin-bottom:14px;}
+  .drop-zone:hover, .drop-zone.arrastando{border-color:var(--brand);color:var(--brand-deep);background:var(--brand-soft);}
+  .doc-item{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12.5px;}
+  .doc-item .esquecer{font-size:11px;background:none;border:1px solid var(--line);border-radius:999px;padding:3px 10px;cursor:pointer;color:var(--ink-soft);}
+  .doc-item .esquecer:hover{border-color:var(--urgente);color:var(--urgente);}
+
+  .multifarma-resumo{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;}
+  .multifarma-resumo .stat{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 16px;text-align:center;}
+  .multifarma-resumo .stat b{display:block;font-size:18px;color:var(--brand-deep);}
+  .multifarma-resumo .stat span{font-size:11px;color:var(--ink-soft);}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brandmark">
+      <img id="brandLogoImg" style="display:none;" alt="Logótipo">
+      <div class="glyph" id="brandGlyph">⚡</div>
+      <div>
+        <h1><span id="tituloAssistenteNome">FARMA</span> IA
+          <button type="button" class="btn-ghost" id="btnEditarNomeAssistente" title="Mudar o nome da assistente" style="font-size:12px;padding:2px 8px;margin-left:6px;vertical-align:middle;">✏️ Nome</button>
+          <small>Alertas, perguntas e oportunidades — sem nenhuma IA externa</small>
+        </h1>
+        <div id="popoverNomeAssistente" style="display:none;margin-top:6px;align-items:center;gap:6px;">
+          <input type="text" id="inputNomeAssistente" maxlength="30" placeholder="Nome da assistente" style="font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;">
+          <button type="button" class="btn-primary" id="btnGuardarNomeAssistente" style="font-size:12px;padding:4px 10px;">Guardar</button>
+          <button type="button" class="btn-ghost" id="btnCancelarNomeAssistente" style="font-size:12px;padding:4px 10px;">Cancelar</button>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <span class="farmacia-tag" id="brandTagFarmacia"></span>
+      <span id="syncStatus"><span class="dot"></span><span id="syncStatusText">a carregar…</span></span>
+    </div>
+  </header>
+
+  <!-- VIEW: ALERTAS & INSIGHTS -->
+  <section class="view" id="viewAlertas">
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Alertas &amp; Insights</h2>
+          <p>Validades, planos a terminar, stock em falta e pedidos parados — calculado a partir dos dados já guardados na Central.</p>
+        </div>
+        <button class="btn-ghost" id="btnRefreshAlertas">Atualizar</button>
+      </div>
+      <div class="panel-body">
+        <div class="resumo-chips" id="resumoChips"></div>
+        <div id="listaAlertas"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VIEW: PERGUNTAR -->
+  <section class="view active" id="viewPerguntar">
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Perguntar à FARMA IA</h2>
+          <p>Assistente por motor de regras, sem nenhuma ligação a um serviço de IA externo — as respostas vêm sempre dos seus próprios dados.</p>
+          <p id="memoriaInfo"></p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="cerebro-bar" id="cerebroBar">
+          <button type="button" class="btn-ghost" id="btnCarregarCerebro">Ativar compreensão totalmente livre (IA local, opcional)</button>
+          <span id="cerebroStatus" class="cerebro-status"></span>
+        </div>
+        <p style="font-size:12px;color:var(--ink-soft);margin:-4px 0 14px;">
+          Pedidos de ação como "cria um pedido de manipulado para…" ou "marca o AUE da Maria como pronto" já funcionam sem precisar de ativar nada acima —
+          o botão só é preciso para pedidos em linguagem muito livre que fujam a estes padrões conhecidos.
+        </p>
+        <div id="chatLog"></div>
+        <div class="exemplos" id="exemplosPerguntas"></div>
+        <form class="pergunta-form" id="formPergunta" autocomplete="off">
+          <input type="text" id="inputPergunta" placeholder="Escreva a sua pergunta…" maxlength="200">
+          <button type="submit" class="btn-primary">Perguntar</button>
+        </form>
+        <details class="revisao-nao-reconhecidas" id="revisaoNaoReconhecidas">
+          <summary>Perguntas que a FARMA ainda não percebeu</summary>
+          <div id="listaNaoReconhecidas" class="lista-nao-reconhecidas"></div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- VIEW: OPORTUNIDADES DE AUTOMAÇÃO -->
+  <section class="view" id="viewOportunidades">
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Oportunidades de Automação</h2>
+          <p>Tarefas muito repetidas nos últimos 30 dias (ver Poupança &amp; ROI) — candidatas a ganhar um atalho dedicado.</p>
+        </div>
+        <button class="btn-ghost" id="btnRefreshOportunidades">Atualizar</button>
+      </div>
+      <div class="panel-body" id="listaOportunidades"></div>
+    </div>
+  </section>
+
+  <!-- VIEW: APRENDER (ponto 43) -->
+  <section class="view" id="viewAprender">
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Aprender</h2>
+          <p>A FARMA explora a Central, treina localmente, lê documentos e partilha aprendizagens anónimas com outras farmácias — tudo sempre revisto antes de qualquer alteração real.</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="aprender-pills" id="aprenderPills">
+          <button type="button" class="pill active" data-sub="explorar">🔎 Explorar central</button>
+          <button type="button" class="pill" data-sub="treino">🏋️ Treino intensivo</button>
+          <button type="button" class="pill" data-sub="leitura">📄 Aprender por leitura</button>
+          <button type="button" class="pill" data-sub="multifarma">🤝 Multifarma</button>
+        </div>
+
+        <!-- Função 1: explorar central -->
+        <div class="aprender-sub active" id="subExplorar">
+          <p class="desc">A FARMA cruza o catálogo real de módulos/tarefas da Central com o que esta farmácia mais repete, e propõe candidatas a automação. Nenhuma proposta é implementada sozinha — "aprovar" só a sinaliza para ser avaliada numa sessão com o Claude e o Ivo.</p>
+          <div class="aprender-linha-acao">
+            <button type="button" class="btn-primary" id="btnExplorarCentral">Explorar a Central agora</button>
+            <span class="aprender-status" id="statusExplorar"></span>
+          </div>
+          <div id="listaPropostas"></div>
+        </div>
+
+        <!-- Função 2: treino intensivo -->
+        <div class="aprender-sub" id="subTreino">
+          <p class="desc">Treina um modelo novo, só para esta farmácia, combinando o conjunto de dados base com as perguntas que já ensinou — sem nunca perder o que a rede já sabia (ver nota técnica no relatório). O resultado só é aceite se passar numa verificação de sanidade.</p>
+          <p class="aprender-status" id="statusAliasesTreino"></p>
+          <div class="toggle-linha">
+            <input type="checkbox" id="chkUsarPartilhado">
+            <label for="chkUsarPartilhado">Incluir padrões partilhados por outras farmácias no treino (só disponível com a Multifarma ativa)</label>
+          </div>
+          <div class="aprender-linha-acao">
+            <button type="button" class="btn-primary" id="btnTreinarAgora">Treinar agora</button>
+            <button type="button" class="btn-ghost" id="btnReverterTreino" style="display:none;">Reverter para o modelo padrão</button>
+            <span class="aprender-status" id="statusTreino"></span>
+          </div>
+          <div id="relatorioTreino"></div>
+          <p class="desc" style="margin-top:16px;">Treino via pesquisa pública na internet — <b>em breve</b>. Por agora, o treino intensivo é sempre local: dados sintéticos + o que ensinou nesta farmácia, com a opção acima de incluir padrões partilhados por outras farmácias.</p>
+        </div>
+
+        <!-- Função 3: aprender por leitura -->
+        <div class="aprender-sub" id="subLeitura">
+          <p class="desc">Carregue um documento (Word, PDF, Excel, HTML, CSV, texto) — a FARMA lê o texto e passa a poder citar excertos relevantes ao responder perguntas. Fica sempre nesta farmácia; nunca é enviado para fora.</p>
+          <div class="drop-zone" id="dropZoneLeitura">
+            📄 Clique para escolher um ficheiro (txt, md, html, csv, pdf, docx, xlsx)
+            <input type="file" id="inputFicheiroLeitura" accept=".txt,.md,.html,.htm,.csv,.pdf,.docx,.xlsx,.xls" style="display:none;">
+          </div>
+          <span class="aprender-status" id="statusLeitura"></span>
+          <div id="relatorioLeitura"></div>
+          <h3 style="margin-top:18px;">Documentos aprendidos</h3>
+          <div id="listaDocumentosLidos"></div>
+        </div>
+
+        <!-- Função 4: aprendizagem multifarma -->
+        <div class="aprender-sub" id="subMultifarma">
+          <p class="desc">Cada farmácia ensina coisas diferentes à sua FARMA. Com isto ativo, esta farmácia contribui e recebe só (1) padrões de linguagem anónimos — vetores, nunca o texto das perguntas — e (2) estatísticas agregadas, nunca exemplos. Nunca envia dados de utentes, receitas ou qualquer informação crítica.</p>
+          <div class="toggle-linha">
+            <input type="checkbox" id="chkMultifarmaAtiva">
+            <label for="chkMultifarmaAtiva">Ativar aprendizagem multifarma nesta farmácia</label>
+          </div>
+          <div id="multifarmaConteudo" style="display:none;">
+            <div class="aprender-linha-acao">
+              <button type="button" class="btn-ghost" id="btnAtualizarMultifarma">Atualizar conhecimento partilhado</button>
+              <button type="button" class="btn-primary" id="btnContribuirMultifarma">Contribuir com o que ensinei</button>
+              <span class="aprender-status" id="statusMultifarma"></span>
+            </div>
+            <div class="multifarma-resumo" id="resumoMultifarma"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="../assets/module-chrome.js"></script>
+<script type="module">
+import { aoExpirarSessao, makeDataStore } from "../src/db.js";
+import { getToken, limparSessao, getPerfil } from "../src/authClient.js";
+import { escapeHtml } from "../src/utils.js";
+import {
+  gerarAlertas, responderPergunta, detectarOportunidadesAutomacao,
+  criarMemoriaVazia, registarPerguntaNaoReconhecida, ensinarAlias, dispensarAlerta,
+  agruparPerguntasSemelhantes, sugerirIntentsSemelhantes,
+  LIMIAR_SILENCIAR_ALERTA_DIAS
+} from "../src/farmaIa.js";
+import { carregarUsoPeriodo, isoDia } from "../src/usoLeitura.js";
+import { listarModelosDisponiveis, carregarModeloLocal, perguntarAoCerebro } from "../src/ui/farmaCerebro.js";
+import { construirPromptSistema, prepararAcao, executarAcaoConfirmada, resolverComRaciocinio } from "../src/farmaAcoes.js";
+import { reconhecerAcaoDeterministica } from "../src/farmaAcoesIntent.js";
+import { carregarCatalogoEfetivo } from "../src/produtosCatalogo.js";
+// ponto 43 — aba "Aprender"
+import { gerarPropostas, registarPropostas, atualizarEstadoProposta, propostasPendentes } from "../src/farmaExplorarCentral.js";
+import { treinarLocal, LIMIAR_SANIDADE_MINIMO } from "../src/farmaTreinoLocal.js";
+import { prepararDocumento, acrescentarAoConhecimento, esquecerDocumento, listarDocumentos } from "../src/farmaLeitura.js";
+import { extrairTextoDeFicheiro } from "../src/ui/farmaLeituraFicheiros.js";
+import {
+  partilhaAtiva, prepararContribuicao, filtrarPadroesRecebidos, resumirConhecimentoPartilhado,
+} from "../src/farmaAprendizagemMultifarma.js";
+import { obterConhecimentoPartilhado, contribuirConhecimento } from "../src/ui/farmaAprendizagemRede.js";
+
+function voltarACentral(){ window.top.location.href = "/"; }
+window.voltarACentral = voltarACentral;
+
+aoExpirarSessao(() => { limparSessao(); voltarACentral(); });
+if(!getToken()) voltarACentral();
+
+const dataStore = makeDataStore();
+
+/* ---------------- memória & aprendizagem (ponto 26) ----------------
+   `config.farmaIaMemoria`, gravada/lida pelo mesmo padrão de `cidade`/
+   `idioma` (getConfig/setConfig). Cache local simples: a 1ª leitura vai ao
+   servidor, as escritas seguintes atualizam a cache de imediato (para a UI
+   reagir sem esperar pela rede) e tentam gravar; uma falha de rede aqui
+   nunca bloqueia o resto do módulo — a aprendizagem é um extra, não um
+   requisito para a FARMA IA funcionar. */
+/* ---------------- ponto 46: nome personalizado da assistente ----------------
+ * Pedido do Ivo: "nas opções da farma deverá ter a opção de mudar de nome".
+ * Guardado em config.farmaNomeAssistente (mesmo mecanismo de config das
+ * outras definições desta página) — muda só como a assistente se apresenta
+ * (saudação, "Sou a X" na resposta de ajuda, mini-chat) e o título visível
+ * neste módulo. Não muda o id do módulo ("farma-ia") nem a entrada fixa
+ * "FARMA IA" na barra lateral/navegação — são identidade de navegação da
+ * app, não da assistente, e mudam de forma consistente para todas as
+ * farmácias; mudar isso também exigiria carregar esta configuração antes da
+ * barra lateral arrancar, um passo bem mais invasivo por um pedido que é,
+ * no fundo, sobre a conversa com a assistente. */
+let nomeAssistenteCache = null;
+async function obterNomeAssistente(){
+  if(nomeAssistenteCache) return nomeAssistenteCache;
+  try{ nomeAssistenteCache = (await dataStore.getConfig("farmaNomeAssistente")) || "FARMA"; }
+  catch(e){ nomeAssistenteCache = "FARMA"; }
+  return nomeAssistenteCache;
+}
+async function gravarNomeAssistente(novoNome){
+  const limpo = (novoNome || "").trim().slice(0, 30) || "FARMA";
+  nomeAssistenteCache = limpo;
+  try{ await dataStore.setConfig("farmaNomeAssistente", limpo); }
+  catch(e){ /* melhor esforço — o nome fica pelo menos aplicado nesta página até recarregar */ }
+  return limpo;
+}
+function aplicarNomeAssistenteNaUI(nome){
+  document.getElementById("tituloAssistenteNome").textContent = nome;
+  const input = document.getElementById("inputNomeAssistente");
+  if(input) input.value = nome;
+  const bolhaTitulo = document.getElementById("chatTituloBolha");
+  if(bolhaTitulo) bolhaTitulo.textContent = nome;
+}
+
+let memoriaCache = null;
+async function obterMemoria(){
+  if(memoriaCache) return memoriaCache;
+  try{ memoriaCache = (await dataStore.getConfig("farmaIaMemoria")) || criarMemoriaVazia(); }
+  catch(e){ memoriaCache = criarMemoriaVazia(); }
+  return memoriaCache;
+}
+async function gravarMemoria(nova){
+  memoriaCache = nova;
+  try{ await dataStore.setConfig("farmaIaMemoria", nova); }catch(e){ /* aprendizagem é best-effort — não bloqueia a UI */ }
+  atualizarMemoriaInfo();
+}
+/* ---------------- rede neuronal (ponto 42, fase 2) ----------------
+   Pesos treinados offline (ver scripts/treinar-rede-farma.mjs), distribuídos
+   como ficheiro estático junto com o resto do código — carregados aqui uma
+   só vez por sessão de página, exatamente como o catálogo base
+   (src/produtosCatalogo.js). Nunca bloqueia nem rebenta a FARMA IA: se o
+   pedido falhar (rede em baixo, ficheiro por qualquer razão indisponível),
+   `pesosRede` fica `null` e `responderPergunta`/`sugerirIntentsSemelhantes`
+   voltam sozinhas ao comportamento de sempre (sem a rede) — ver o parâmetro
+   opcional `pesosRede` em src/farmaIa.js. */
+const PESOS_REDE_URL = "/src/farmaRedePesos.json";
+let pesosRedeCache = null;
+let pesosRedePromise = null;
+async function obterPesosRede(){
+  if(pesosRedeCache) return pesosRedeCache;
+  if(!pesosRedePromise){
+    pesosRedePromise = fetch(PESOS_REDE_URL, { headers: { Accept: "application/json" } })
+      .then(res => { if(!res.ok) throw new Error("HTTP " + res.status); return res.json(); })
+      .then(pesos => { pesosRedeCache = pesos; return pesos; })
+      .catch(e => { console.warn("FARMA: não foi possível carregar a rede neuronal (fase 2 do ponto 41/42) — a continuar sem ela.", e); return null; });
+  }
+  return pesosRedePromise;
+}
+/* ponto 43, Função 2 — se esta farmácia tiver um treino local aceite
+ * (config.farmaTreinoLocal), usa-o em vez dos pesos partilhados de
+ * produção — é uma camada extra só desta farmácia, nunca substitui o
+ * ficheiro partilhado. `pesosLocaisCache` undefined = ainda não verificado;
+ * null = verificado, não há nenhum (ou foi revertido). */
+let pesosLocaisCache = undefined;
+async function obterPesosEfetivos(){
+  if(pesosLocaisCache === undefined){
+    try{
+      const treinoLocal = await dataStore.getConfig("farmaTreinoLocal");
+      pesosLocaisCache = (treinoLocal && treinoLocal.aceite && treinoLocal.pesos) ? treinoLocal.pesos : null;
+    }catch(e){ pesosLocaisCache = null; }
+  }
+  return pesosLocaisCache || (await obterPesosRede());
+}
+
+function atualizarMemoriaInfo(){
+  const el = document.getElementById("memoriaInfo");
+  if(!el || !memoriaCache) return;
+  const nAliases = Object.keys(memoriaCache.aliases || {}).length;
+  const nSilenciados = Object.keys(memoriaCache.alertasDispensados || {}).length;
+  if(!nAliases && !nSilenciados){ el.textContent = ""; return; }
+  const partes = [];
+  if(nAliases) partes.push(`${nAliases} pergunta${nAliases === 1 ? "" : "s"} já aprendida${nAliases === 1 ? "" : "s"}`);
+  if(nSilenciados) partes.push(`${nSilenciados} alerta${nSilenciados === 1 ? "" : "s"} silenciado${nSilenciados === 1 ? "" : "s"}`);
+  el.textContent = "🧠 " + partes.join(" · ");
+}
+
+/* ---------------- ponto 42, fase 3: rever perguntas não reconhecidas ----------------
+   Painel de revisão (fechado por defeito, para não sobrecarregar o chat) —
+   agrupa formulações quase-duplicadas com agruparPerguntasSemelhantes (só de
+   apresentação, nunca altera o que fica gravado) e deixa ensinar um alias
+   diretamente a partir daqui, sem ter de voltar a escrever a pergunta no
+   chat. Ensinar um grupo ensina TODAS as formulações agrupadas de uma vez —
+   é a mesma pergunta feita de formas diferentes. */
+async function renderizarNaoReconhecidas(){
+  const el = document.getElementById("listaNaoReconhecidas");
+  if(!el) return;
+  const memoria = await obterMemoria();
+  const pesosRede = await obterPesosEfetivos();
+  const grupos = agruparPerguntasSemelhantes(memoria.perguntasNaoReconhecidas, pesosRede);
+  if(!grupos.length){
+    el.innerHTML = `<div class="vazio">Sem perguntas por rever — tudo o que foi perguntado foi reconhecido.</div>`;
+    return;
+  }
+  el.innerHTML = grupos.map((g, i) => `
+    <div class="nrq-item" data-idx="${i}">
+      <div class="nrq-linha1">
+        <span class="nrq-texto">${escapeHtml(g.pergunta)}</span>
+        <span class="nrq-contagem">${g.ocorrencias}×</span>
+      </div>
+      ${g.variantes.length > 1 ? `<div class="nrq-variantes">+ ${g.variantes.length - 1} formulação${g.variantes.length - 1 === 1 ? "" : "s"} parecida${g.variantes.length - 1 === 1 ? "" : "s"}</div>` : ""}
+      <div class="nrq-ensinar"></div>
+    </div>
+  `).join("");
+  grupos.forEach((g, i) => {
+    const wrapEnsinar = el.querySelector(`.nrq-item[data-idx="${i}"] .nrq-ensinar`);
+    const sugestoes = sugerirIntentsSemelhantes(g.pergunta, 3, pesosRede);
+    if(!sugestoes.length) return;
+    wrapEnsinar.innerHTML = sugestoes.map(s =>
+      `<button type="button" data-intent="${escapeHtml(s.intentId)}">${escapeHtml(s.exemplo || s.intentId)}</button>`
+    ).join("");
+    wrapEnsinar.addEventListener("click", async (e) => {
+      const btn = e.target.closest("[data-intent]");
+      if(!btn) return;
+      let m = await obterMemoria();
+      for(const variante of g.variantes) m = ensinarAlias(m, variante, btn.dataset.intent);
+      await gravarMemoria(m);
+      renderizarNaoReconhecidas();
+    });
+  });
+}
+document.getElementById("revisaoNaoReconhecidas").addEventListener("toggle", (e) => {
+  if(e.target.open) renderizarNaoReconhecidas();
+});
+
+/* ---------------- branding (mesmo padrão dos outros 13 módulos) ---------------- */
+function nomeFarmaciaAtual(){ return getPerfil()?.nomeFarmacia || "Farmácia"; }
+function aplicarBrandingFarmacia(){
+  document.getElementById("brandTagFarmacia").textContent = nomeFarmaciaAtual();
+}
+aplicarBrandingFarmacia();
+(async function carregarLogo(){
+  const cached = window.ModuleChrome.getCachedBranding();
+  if(cached?.nomeFarmacia) document.getElementById("brandTagFarmacia").textContent = cached.nomeFarmacia;
+  if(cached?.logo) mostrarLogo(cached.logo);
+  const token = getToken();
+  if(!token) return;
+  const logo = await window.ModuleChrome.fetchLogoAsset(token);
+  if(logo) mostrarLogo(logo);
+  window.ModuleChrome.cacheBranding(nomeFarmaciaAtual(), logo);
+})();
+function mostrarLogo(src){
+  const img = document.getElementById("brandLogoImg");
+  const glyph = document.getElementById("brandGlyph");
+  img.src = src; img.style.display = "block"; glyph.style.display = "none";
+}
+
+/* ---------------- ponto 46: editor do nome da assistente ---------------- */
+(async function initEditorNomeAssistente(){
+  const nomeAtual = await obterNomeAssistente();
+  aplicarNomeAssistenteNaUI(nomeAtual);
+})();
+document.getElementById("btnEditarNomeAssistente").addEventListener("click", () => {
+  const pop = document.getElementById("popoverNomeAssistente");
+  const abrir = pop.style.display === "none";
+  pop.style.display = abrir ? "flex" : "none";
+  if(abrir) document.getElementById("inputNomeAssistente").focus();
+});
+document.getElementById("btnCancelarNomeAssistente").addEventListener("click", () => {
+  document.getElementById("popoverNomeAssistente").style.display = "none";
+  aplicarNomeAssistenteNaUI(nomeAssistenteCache || "FARMA");
+});
+document.getElementById("btnGuardarNomeAssistente").addEventListener("click", async () => {
+  const btn = document.getElementById("btnGuardarNomeAssistente");
+  const input = document.getElementById("inputNomeAssistente");
+  btn.disabled = true;
+  const novoNome = await gravarNomeAssistente(input.value);
+  aplicarNomeAssistenteNaUI(novoNome);
+  document.getElementById("popoverNomeAssistente").style.display = "none";
+  btn.disabled = false;
+  window.ModuleChrome.registarUso("farma-ia", "renomear_assistente");
+});
+document.getElementById("inputNomeAssistente").addEventListener("keydown", (e) => {
+  if(e.key === "Enter"){ e.preventDefault(); document.getElementById("btnGuardarNomeAssistente").click(); }
+  if(e.key === "Escape"){ e.preventDefault(); document.getElementById("btnCancelarNomeAssistente").click(); }
+});
+
+function setSyncStatus(estado, texto){
+  const el = document.getElementById("syncStatus");
+  el.className = estado;
+  document.getElementById("syncStatusText").textContent = texto;
+}
+
+/* ---------------- navegação inferior (3 vistas) ---------------- */
+let currentView = "perguntar";
+const jaCarregouView = { alertas: false, perguntar: true, oportunidades: false, aprender: false };
+function switchView(id){
+  currentView = id;
+  ["Alertas","Perguntar","Oportunidades","Aprender"].forEach(v => {
+    document.getElementById("view" + v).classList.toggle("active", v.toLowerCase() === id);
+  });
+  bar.setActive(id);
+  if(id === "alertas" && !jaCarregouView.alertas) carregarAlertas();
+  if(id === "oportunidades" && !jaCarregouView.oportunidades) carregarOportunidades();
+  if(id === "aprender" && !jaCarregouView.aprender) iniciarAprender();
+}
+const bar = window.ModuleChrome.mountBottomBar([
+  { id: "alertas", icon: "🔔", label: "Alertas", onSelect: () => switchView("alertas") },
+  { id: "perguntar", icon: "💬", label: "Perguntar", onSelect: () => switchView("perguntar") },
+  { id: "oportunidades", icon: "⚡", label: "Oportunidades", onSelect: () => switchView("oportunidades") },
+  { id: "aprender", icon: "🧠", label: "Aprender", onSelect: () => switchView("aprender") }
+], { activeId: "perguntar" });
+
+/* ---------------- ponto 29: saudação automática ao abrir o módulo ----------------
+ * Pedido do Ivo: "a farma quando abrimos o módulo dela a primeira coisa que abre é
+ * o chat dela, preciso que a farma saiba quem eu sou". A app não tem login por
+ * pessoa (só por farmácia), por isso "saber quem sou" aqui é, com honestidade,
+ * saber o nome da farmácia com sessão iniciada — não o nome de um funcionário
+ * específico. Usa o nome já em cache local (sem pedido extra ao servidor); se
+ * ainda não houver cache (1ª visita), cumprimenta de forma genérica. */
+(async function saudarAoAbrir(){
+  const cache = window.ModuleChrome.getCachedBranding ? window.ModuleChrome.getCachedBranding() : null;
+  const nomeFarmacia = cache && cache.nomeFarmacia;
+  const nomeAssistente = await obterNomeAssistente();
+  aplicarNomeAssistenteNaUI(nomeAssistente);
+  const texto = nomeFarmacia
+    ? `Olá! Sou a ${nomeAssistente}, a assistente da ${nomeFarmacia}. Em que posso ajudar?`
+    : `Olá! Sou a ${nomeAssistente}. Em que posso ajudar?`;
+  adicionarMensagem(texto, "resposta");
+})();
+
+/* ---------------- pilar 1: alertas & insights ---------------- */
+let estadoAlertasAtual = null; // guardado para o botão "Dispensar" recalcular sem novo pedido ao servidor
+async function carregarAlertas(){
+  setSyncStatus("", "a carregar…");
+  try{
+    const estado = await dataStore.getEstadoCompleto();
+    estadoAlertasAtual = estado;
+    const memoria = estado.config?.farmaIaMemoria || (await obterMemoria());
+    memoriaCache = memoria; // a leitura do estado completo já traz a memória — evita um 2º pedido
+    const { alertas, resumo, totalDispensados } = gerarAlertas(estado, new Date(), memoria);
+    renderAlertas(alertas, resumo, totalDispensados);
+    atualizarMemoriaInfo();
+    jaCarregouView.alertas = true;
+    setSyncStatus("ok", "atualizado agora");
+    window.ModuleChrome.registarUso("farma-ia", "ver_alertas");
+  }catch(e){
+    setSyncStatus("fail", "falha ao carregar");
+    document.getElementById("listaAlertas").innerHTML = `<div class="vazio">Não foi possível carregar os alertas. ${escapeHtml(e.message || "")}</div>`;
+  }
+}
+function renderAlertas(alertas, resumo, totalDispensados){
+  const chips = document.getElementById("resumoChips");
+  chips.innerHTML = `
+    ${resumo.urgentes ? `<span class="chip urgente">${resumo.urgentes} urgente${resumo.urgentes===1?"":"s"}</span>` : ""}
+    ${resumo.avisos ? `<span class="chip aviso">${resumo.avisos} aviso${resumo.avisos===1?"":"s"}</span>` : ""}
+    ${!resumo.total ? `<span class="chip ok">Tudo em ordem</span>` : ""}
+  `;
+  const lista = document.getElementById("listaAlertas");
+  const notaDispensados = totalDispensados
+    ? `<p class="dispensados-nota">${totalDispensados} alerta${totalDispensados === 1 ? "" : "s"} silenciado${totalDispensados === 1 ? "" : "s"} temporariamente. <button type="button" id="btnMostrarDispensados">Mostrar</button></p>`
+    : "";
+  if(!alertas.length){
+    lista.innerHTML = notaDispensados + `<div class="vazio"><b>✓ Nenhum alerta ativo</b>Não há validades a expirar, planos a terminar, stock em falta nem pedidos parados neste momento.</div>`;
+    ligarBotaoMostrarDispensados();
+    return;
+  }
+  const nomesModulo = { pim: "PIM", gabinete: "Gabinete", stocks: "Stocks Errados", aue: "AUE", manipulados: "Manipulados", manutencao: "Manutenção" };
+  lista.innerHTML = notaDispensados + alertas.map(a => `
+    <div class="alerta-card ${a.severidade}" data-alerta-id="${escapeHtml(a.id)}">
+      <div class="linha1">
+        <h3>${escapeHtml(a.titulo)}</h3>
+        <span class="sev-badge ${a.severidade}">${a.severidade}</span>
+      </div>
+      <p>${escapeHtml(a.descricao)}</p>
+      <div class="linha2">
+        <span class="mod-badge">${escapeHtml(nomesModulo[a.modulo] || a.modulo)}</span>
+        <button type="button" class="dispensar-btn" data-dispensar="${escapeHtml(a.id)}" title="Deixa de aparecer durante ${LIMIAR_SILENCIAR_ALERTA_DIAS} dias">Dispensar ${LIMIAR_SILENCIAR_ALERTA_DIAS}d</button>
+      </div>
+    </div>
+  `).join("");
+  ligarBotaoMostrarDispensados();
+}
+function ligarBotaoMostrarDispensados(){
+  const btn = document.getElementById("btnMostrarDispensados");
+  if(btn) btn.addEventListener("click", () => {
+    window.alert(`Os alertas dispensados voltam a aparecer sozinhos ao fim de ${LIMIAR_SILENCIAR_ALERTA_DIAS} dias, ou mais cedo se a situação de origem for corrigida e voltar a mudar. Não há, por agora, uma lista detalhada — é sempre temporário, nunca definitivo.`);
+  });
+}
+document.getElementById("listaAlertas").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-dispensar]");
+  if(!btn) return;
+  const alertaId = btn.dataset.dispensar;
+  btn.disabled = true;
+  btn.textContent = "…";
+  try{
+    const memoria = dispensarAlerta(await obterMemoria(), alertaId, new Date());
+    await gravarMemoria(memoria);
+    window.ModuleChrome.registarUso("farma-ia", "dispensar_alerta");
+    if(estadoAlertasAtual){
+      const { alertas, resumo, totalDispensados } = gerarAlertas(estadoAlertasAtual, new Date(), memoria);
+      renderAlertas(alertas, resumo, totalDispensados);
+    }
+  }catch(e2){
+    btn.disabled = false;
+    btn.textContent = `Dispensar ${LIMIAR_SILENCIAR_ALERTA_DIAS}d`;
+  }
+});
+document.getElementById("btnRefreshAlertas").addEventListener("click", carregarAlertas);
+
+/* ---------------- pilar 2: perguntar ---------------- */
+const EXEMPLOS = [
+  "Quantos utentes tenho no PIM?",
+  "Há medicamentos perto da validade?",
+  "Quantos pedidos AUE estão pendentes?",
+  "Quantas divergências de stock tenho?",
+  "Quantos alertas tenho?",
+  "Quanto tempo já poupei?"
+];
+document.getElementById("exemplosPerguntas").innerHTML = EXEMPLOS.map(p =>
+  `<button type="button" class="exemplo-btn" data-pergunta="${escapeHtml(p)}">${escapeHtml(p)}</button>`
+).join("");
+document.getElementById("exemplosPerguntas").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-pergunta]");
+  if(!btn) return;
+  document.getElementById("inputPergunta").value = btn.dataset.pergunta;
+  document.getElementById("formPergunta").dispatchEvent(new Event("submit", { cancelable: true }));
+});
+
+let diasUsoCache = null;
+async function obterDiasUso(){
+  if(diasUsoCache) return diasUsoCache;
+  const hoje = new Date();
+  const inicio = new Date(hoje.getTime() - 30 * 86400000);
+  try{ diasUsoCache = await carregarUsoPeriodo(dataStore, isoDia(inicio), isoDia(hoje)); }
+  catch(e){ diasUsoCache = {}; }
+  return diasUsoCache;
+}
+
+function adicionarMensagem(texto, tipo, semIntent, aprendido, viaRedeNeural){
+  const log = document.getElementById("chatLog");
+  const div = document.createElement("div");
+  div.className = `msg ${tipo}${semIntent ? " sem-intent" : ""}${aprendido ? " aprendido" : ""}${viaRedeNeural ? " via-rede-neural" : ""}`;
+  // 🧠 = resposta por um alias já ensinado (ponto 26); 🧩 = resposta pela
+  // rede neuronal (ponto 42) reconhecendo uma paráfrase sem nenhuma
+  // palavra-chave exata — sinais visuais diferentes de propósito, para o
+  // operador saber sempre de onde veio a resposta.
+  div.textContent = (aprendido ? "🧠 " : viaRedeNeural ? "🧩 " : "") + texto;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+
+/** Mostra os botões "talvez quisesse dizer: ..." por baixo da última resposta
+ *  não reconhecida — clicar num ensina o alias (ponto 26) e responde de
+ *  imediato, para a mesma pergunta já ficar reconhecida da próxima vez. */
+function mostrarSugestoes(perguntaOriginal, sugestoes, estado, contextoBase){
+  if(!sugestoes || !sugestoes.length) return;
+  const log = document.getElementById("chatLog");
+  const wrap = document.createElement("div");
+  wrap.className = "sugestoes-aprender";
+  wrap.innerHTML = `<span class="rotulo">Talvez quisesse dizer:</span>` + sugestoes.map(s =>
+    `<button type="button" class="sugestao-btn" data-intent="${escapeHtml(s.intentId)}">${escapeHtml(s.exemplo || s.intentId)}</button>`
+  ).join("");
+  log.appendChild(wrap);
+  log.scrollTop = log.scrollHeight;
+  wrap.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-intent]");
+    if(!btn) return;
+    wrap.remove();
+    const memoria = ensinarAlias(await obterMemoria(), perguntaOriginal, btn.dataset.intent);
+    await gravarMemoria(memoria);
+    const { resposta } = responderPergunta(perguntaOriginal, estado, { ...contextoBase, memoria });
+    adicionarMensagem(resposta, "resposta", false, true);
+    window.ModuleChrome.registarUso("farma-ia", "ensinar_alias");
+  });
+}
+
+/* ---------------- ponto 30: "cérebro" local (WebLLM), opcional ----------------
+ * Só carrega se o operador clicar no botão — nunca automaticamente (é um
+ * download de várias centenas de MB a alguns GB, decisão consciente). Ver
+ * src/ui/farmaCerebro.js e src/farmaAcoes.js para a lógica e o porquê. */
+let cerebroEngine = null;
+// ponto 32: histórico da conversa com o modelo local, para a FARMA conseguir
+// "perguntar quando falta informação" e entender a resposta seguinte no
+// mesmo contexto (ex.: "falta o telefone, qual é?" -> "912345678"). Só em
+// memória desta página (não persiste, não é a "Memória & Aprendizagem" do
+// ponto 26, que é sobre o motor de regras) — limitado a poucas trocas para
+// não sobrecarregar a janela de contexto pequena de um modelo local.
+let historicoConversaLLM = [];
+const HISTORICO_LLM_MAX_MENSAGENS = 8; // ~4 trocas pergunta/resposta
+
+function obterEmailDestinoOrcamentoLocal(){
+  try { return (JSON.parse(localStorage.getItem("famam_email_settings")) || {}).dest || ""; }
+  catch(e){ return ""; }
+}
+// mesma chave/forma usada em modulos/aue.html (getEmailSettings) — contactos
+// (to/cc) por armazenista, definidos nas Definições de Email desse módulo.
+function obterContactosArmazenistaLocal(){
+  try { return (JSON.parse(localStorage.getItem("aue_email_settings")) || {}).armazenistaContacts || {}; }
+  catch(e){ return {}; }
+}
+
+document.getElementById("btnCarregarCerebro").addEventListener("click", async () => {
+  const btn = document.getElementById("btnCarregarCerebro");
+  const statusEl = document.getElementById("cerebroStatus");
+  btn.disabled = true;
+  statusEl.textContent = "A preparar…";
+  try {
+    const modelos = await listarModelosDisponiveis();
+    if (!modelos.length) throw new Error("nenhum modelo de conversa disponível");
+    const escolhido = modelos[0]; // o mais pequeno/rápido — melhor 1ª experiência
+    statusEl.textContent = `A carregar ${escolhido.id}${escolhido.tamanhoGB ? ` (~${escolhido.tamanhoGB} GB, só desta vez)` : ""}…`;
+    cerebroEngine = await carregarModeloLocal(escolhido.id, (texto, fracao) => {
+      statusEl.textContent = texto || `${Math.round(fracao * 100)}%`;
+    });
+    statusEl.textContent = "IA local ativa — agora a FARMA tenta perceber qualquer pergunta.";
+    btn.style.display = "none";
+  } catch (e) {
+    statusEl.textContent = "Não foi possível carregar a IA local agora (" + (e.message || e) + "). A FARMA continua a funcionar normalmente sem ela.";
+    btn.disabled = false;
+  }
+});
+
+function mostrarCartaoAcao(resumo, plano, contexto) {
+  const log = document.getElementById("chatLog");
+  const card = document.createElement("div");
+  card.className = "acao-card";
+  card.innerHTML = `<div>${escapeHtml(resumo)}</div><div class="acao-botoes">
+    <button type="button" class="confirmar">Confirmar</button>
+    <button type="button" class="cancelar">Cancelar</button></div>`;
+  log.appendChild(card);
+  log.scrollTop = log.scrollHeight;
+  card.querySelector(".cancelar").addEventListener("click", () => card.remove());
+  card.querySelector(".confirmar").addEventListener("click", async () => {
+    card.querySelectorAll("button").forEach(b => b.disabled = true);
+    const r = await executarAcaoConfirmada(plano, {
+      dataStore, registarUso: window.ModuleChrome.registarUso,
+      emailDestinoOrcamento: obterEmailDestinoOrcamentoLocal(),
+      contactosArmazenista: obterContactosArmazenistaLocal(),
+    });
+    card.remove();
+    adicionarMensagem(r.mensagem, "resposta");
+    if (r.abrirEmail) {
+      // nunca enviado sozinho pela FARMA — só abre o programa de email do
+      // operador já preenchido, exatamente como os botões manuais dos
+      // módulos de Manipulados e AUE; só ele decide clicar em enviar. Note-se
+      // que o AUE também suporta um envio automático via Web App própria
+      // (`modulos/aue.html`, `confirmSendEmail`) quando configurada — a FARMA
+      // nunca usa esse caminho, só o mailto:, por ser sempre um rascunho a
+      // rever antes de sair, decisão deliberadamente mais cautelosa.
+      let mailto = `mailto:${encodeURIComponent(r.abrirEmail.to)}?subject=${encodeURIComponent(r.abrirEmail.subject)}&body=${encodeURIComponent(r.abrirEmail.body)}`;
+      if (r.abrirEmail.cc) mailto += `&cc=${encodeURIComponent(r.abrirEmail.cc)}`;
+      window.open(mailto, "_blank");
+    }
+  });
+}
+
+document.getElementById("formPergunta").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = document.getElementById("inputPergunta");
+  const pergunta = input.value.trim();
+  if(!pergunta) return;
+  adicionarMensagem(pergunta, "pergunta");
+  input.value = "";
+  try{
+    const estado = await dataStore.getEstadoCompleto();
+    const diasUso = await obterDiasUso();
+    const memoria = await obterMemoria();
+    const pesosRede = await obterPesosEfetivos();
+    const baseConhecimento = await obterBaseConhecimento();
+    const contexto = { diasUso, memoria, pesosRede, baseConhecimento, nomeAssistente: nomeAssistenteCache || await obterNomeAssistente() };
+
+    // ponto 46: reconhecimento de ações SEM IA nenhuma, nem local nem
+    // externa — pedido explícito do Ivo ("liga directamente o motor de
+    // ações da farma"). Corre ANTES do motor de perguntas/respostas de
+    // propósito: uma frase como "cria um pedido de manipulado para a Ana
+    // Costa..." partilha vocabulário de domínio com intents de pergunta
+    // (p.ex. "manipulado" também está no grupo de palavras de
+    // pedidos_manipulados), e o motor de perguntas casa por qualquer
+    // palavra-chave isolada em qualquer posição do texto — se este
+    // reconhecimento corresse só depois (como acontecia antes desta
+    // correção), o motor de perguntas intercetava sempre estes pedidos com
+    // uma resposta enlatada, e o cartão de ação nunca chegava a aparecer.
+    // Os gatilhos deste reconhecimento exigem sempre um verbo de ação
+    // explícito (cria, marca, adiciona, remove, ...) além da âncora de
+    // domínio, pelo que perguntas genuínas (interrogativas, sem esse verbo)
+    // nunca são afetadas — ver tests/farmaAcoesIntent.test.js, casos de
+    // controlo negativo. Disponível sempre, mesmo sem ter carregado a IA
+    // local (o "cérebro" abaixo, que continua a existir como caminho de
+    // reserva para pedidos mais livres que este reconhecimento por padrões
+    // não cobre). Nunca executa nada sozinho — só chega ao mesmo cartão
+    // "Confirmar/Cancelar" de sempre.
+    const reconhecimento = reconhecerAcaoDeterministica(pergunta);
+    if (reconhecimento) {
+      window.ModuleChrome.registarUso("farma-ia", "perguntar");
+      if (reconhecimento.tipo === "incompleta") {
+        adicionarMensagem(reconhecimento.motivo, "resposta");
+        return;
+      }
+      try {
+        let estadoParaAcao = estado;
+        if (reconhecimento.acaoId.startsWith("catalogo.")) {
+          const catalogo = await carregarCatalogoEfetivo(dataStore);
+          estadoParaAcao = { ...estado, catalogoProdutos: catalogo.products };
+        }
+        const preparado = prepararAcao(reconhecimento.acaoId, reconhecimento.parametros, estadoParaAcao);
+        if (preparado.ok) {
+          mostrarCartaoAcao(preparado.resumo, preparado.plano, contexto);
+        } else {
+          adicionarMensagem(preparado.motivo, "resposta");
+        }
+      } catch (e) {
+        console.error("FARMA IA — falha ao preparar ação reconhecida:", e);
+        adicionarMensagem("Percebi o que queria fazer, mas não consegui preparar a ação agora. Tente outra vez.", "resposta");
+      }
+      return;
+    }
+
+    const { resposta, intentId, viaAprendizagem, viaRedeNeural, sugestoes } = responderPergunta(pergunta, estado, contexto);
+    window.ModuleChrome.registarUso("farma-ia", "perguntar");
+    if (intentId) {
+      adicionarMensagem(resposta, "resposta", false, viaAprendizagem, viaRedeNeural);
+      return;
+    }
+    // regista para histórico mesmo que o utilizador não ensine um alias agora —
+    // fica disponível para quem gere a farmácia rever o que foi perguntado
+    // (painel "Perguntas que a FARMA ainda não percebeu", ver renderizarNaoReconhecidas).
+    await gravarMemoria(registarPerguntaNaoReconhecida(memoria, pergunta, new Date()));
+    const painelRevisao = document.getElementById("revisaoNaoReconhecidas");
+    if(painelRevisao?.open) renderizarNaoReconhecidas();
+
+    if (cerebroEngine) {
+      let statusPensar = null;
+      try {
+        const promptSistema = construirPromptSistema();
+        // ponto 41: em vez de um único disparo, resolverComRaciocinio deixa
+        // a FARMA corrigir-se sozinha quando prepararAcao recusa por um
+        // motivo que o próprio modelo consegue resolver (lista ambígua,
+        // parâmetro em falta) — só desiste ao fim de várias tentativas,
+        // exatamente como fazia antes desta peça. Ver src/farmaAcoes.js.
+        const resultado = await resolverComRaciocinio(pergunta, {
+          perguntarFn: (p, historico) => perguntarAoCerebro(cerebroEngine, promptSistema, p, historico),
+          historico: historicoConversaLLM,
+          estado,
+          // ações de catálogo precisam do catálogo de produtos, que não faz
+          // parte de `estado` (vive à parte, ver src/produtosCatalogo.js) —
+          // só se vai buscar quando a ação realmente precisa, para não
+          // pesar todas as outras perguntas com este pedido extra.
+          carregarEstadoParaAcao: async (acaoId, estadoBase) => {
+            if (!acaoId.startsWith("catalogo.")) return estadoBase;
+            const catalogo = await carregarCatalogoEfetivo(dataStore);
+            return { ...estadoBase, catalogoProdutos: catalogo.products };
+          },
+          maxTentativas: 3,
+          // só assinala visivelmente a partir da 2ª tentativa — a 1ª é o
+          // caminho normal, sem nada de especial para o operador ver.
+          onTentativa: (tentativa, max) => {
+            if (tentativa === 1) return;
+            const texto = `🧠 A pensar melhor (tentativa ${tentativa} de ${max})…`;
+            if (statusPensar) statusPensar.textContent = texto;
+            else statusPensar = adicionarMensagem(texto, "resposta a-pensar");
+          },
+        });
+        if (statusPensar) { statusPensar.remove(); statusPensar = null; }
+
+        historicoConversaLLM.push({ role: "user", content: pergunta }, { role: "assistant", content: resultado.brutoFinal });
+        if (historicoConversaLLM.length > HISTORICO_LLM_MAX_MENSAGENS) {
+          historicoConversaLLM = historicoConversaLLM.slice(-HISTORICO_LLM_MAX_MENSAGENS);
+        }
+
+        if (resultado.tipo === "resposta") {
+          adicionarMensagem(resultado.texto, "resposta via-ia-local");
+          return;
+        }
+        if (resultado.tipo === "acao") {
+          mostrarCartaoAcao(resultado.resumo, resultado.plano, contexto);
+          return;
+        }
+        // "invalido" — a IA local também não conseguiu, mesmo depois de
+        // tentar corrigir-se sozinha; cai para o fallback de sempre abaixo.
+      } catch (e) {
+        // erro a falar com o modelo local (ex.: falhou a meio) — mesmo assim
+        // cai para o fallback do motor de regras, nunca deixa a pergunta sem resposta.
+        if (statusPensar) statusPensar.remove();
+      }
+    }
+    adicionarMensagem(resposta, "resposta", true, false);
+    mostrarSugestoes(pergunta, sugestoes, estado, contexto);
+  }catch(err){
+    adicionarMensagem("Não foi possível consultar os dados neste momento. Tente novamente.", "resposta", true);
+  }
+});
+
+/* ---------------- pilar 3: oportunidades de automação ---------------- */
+async function carregarOportunidades(){
+  const lista = document.getElementById("listaOportunidades");
+  lista.innerHTML = `<div class="vazio">a carregar…</div>`;
+  try{
+    const diasUso = await obterDiasUso();
+    const oportunidades = detectarOportunidadesAutomacao(diasUso, { numDias: 30 });
+    renderOportunidades(oportunidades);
+    jaCarregouView.oportunidades = true;
+    window.ModuleChrome.registarUso("farma-ia", "ver_oportunidades");
+  }catch(e){
+    lista.innerHTML = `<div class="vazio">Não foi possível calcular as oportunidades de automação.</div>`;
+  }
+}
+function renderOportunidades(oportunidades){
+  const lista = document.getElementById("listaOportunidades");
+  if(!oportunidades.length){
+    lista.innerHTML = `<div class="vazio"><b>Sem oportunidades no momento</b>Nenhuma tarefa foi repetida com frequência suficiente nos últimos 30 dias para justificar um atalho dedicado.</div>`;
+    return;
+  }
+  lista.innerHTML = oportunidades.map(o => `
+    <div class="oport-item">
+      <div class="linha1">
+        <h3>${escapeHtml(o.nome)}</h3>
+        <span class="contagem">${o.totalOcorrencias}× no período</span>
+      </div>
+      <p>${escapeHtml(o.sugestao)} Média de ${o.mediaDiaria}/dia.</p>
+    </div>
+  `).join("");
+}
+document.getElementById("btnRefreshOportunidades").addEventListener("click", () => { jaCarregouView.oportunidades = false; carregarOportunidades(); });
+
+/* ---------------- pilar 4: aprender (ponto 43) ---------------- */
+document.getElementById("aprenderPills").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-sub]");
+  if(!btn) return;
+  const sub = btn.dataset.sub;
+  document.querySelectorAll("#aprenderPills .pill").forEach(p => p.classList.toggle("active", p === btn));
+  document.querySelectorAll(".aprender-sub").forEach(s => s.classList.remove("active"));
+  document.getElementById("sub" + sub.charAt(0).toUpperCase() + sub.slice(1)).classList.add("active");
+});
+
+function iniciarAprender(){
+  jaCarregouView.aprender = true;
+  carregarPropostasExistentes();
+  atualizarStatusAliasesTreino();
+  carregarDocumentosLidos();
+  carregarEstadoMultifarma();
+}
+
+/* ---- Função 1: explorar central ---- */
+async function carregarPropostasExistentes(){
+  try{
+    const propostas = (await dataStore.getConfig("farmaPropostas")) || [];
+    renderPropostas(propostasPendentes(propostas));
+  }catch(e){ /* o botão "explorar" continua a funcionar mesmo que isto falhe */ }
+}
+function renderPropostas(pendentes){
+  const lista = document.getElementById("listaPropostas");
+  if(!pendentes.length){
+    lista.innerHTML = `<div class="vazio">Sem propostas por rever. Clique em "Explorar a Central agora" para procurar novas.</div>`;
+    return;
+  }
+  lista.innerHTML = pendentes.map(p => `
+    <div class="proposta-card" data-id="${escapeHtml(p.id)}">
+      <h4>${escapeHtml(p.titulo)}</h4>
+      <p>${escapeHtml(p.descricao)}</p>
+      <p class="evidencia">${escapeHtml(p.evidencia)}</p>
+      <div class="proposta-botoes">
+        <button type="button" class="aprovar" data-acao="aprovar">Aprovar para revisão</button>
+        <button type="button" class="rejeitar" data-acao="rejeitar">Rejeitar</button>
+      </div>
+    </div>
+  `).join("");
+}
+document.getElementById("btnExplorarCentral").addEventListener("click", async () => {
+  const btn = document.getElementById("btnExplorarCentral");
+  const status = document.getElementById("statusExplorar");
+  btn.disabled = true;
+  status.className = "aprender-status";
+  status.textContent = "a explorar…";
+  try{
+    const diasUso = await obterDiasUso();
+    const oportunidades = detectarOportunidadesAutomacao(diasUso, { numDias: 30 });
+    const novas = gerarPropostas(oportunidades, new Date());
+    const atuais = (await dataStore.getConfig("farmaPropostas")) || [];
+    const combinadas = registarPropostas(atuais, novas);
+    await dataStore.setConfig("farmaPropostas", combinadas);
+    renderPropostas(propostasPendentes(combinadas));
+    const novasContagem = combinadas.length - atuais.length;
+    status.className = "aprender-status sucesso";
+    status.textContent = novasContagem > 0 ? `${novasContagem} proposta${novasContagem===1?"":"s"} nova${novasContagem===1?"":"s"}.` : "Nenhuma proposta nova desta vez.";
+    window.ModuleChrome.registarUso("farma-ia", "explorar_central");
+  }catch(e){
+    status.className = "aprender-status erro";
+    status.textContent = "Não foi possível explorar agora.";
+  }finally{
+    btn.disabled = false;
+  }
+});
+document.getElementById("listaPropostas").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-acao]");
+  if(!btn) return;
+  const card = btn.closest(".proposta-card");
+  const id = card.dataset.id;
+  const novoEstado = btn.dataset.acao === "aprovar" ? "aprovada_para_revisao" : "rejeitada";
+  card.querySelectorAll("button").forEach(b => b.disabled = true);
+  try{
+    const atuais = (await dataStore.getConfig("farmaPropostas")) || [];
+    const atualizadas = atualizarEstadoProposta(atuais, id, novoEstado, new Date());
+    await dataStore.setConfig("farmaPropostas", atualizadas);
+    window.ModuleChrome.registarUso("farma-ia", novoEstado === "aprovada_para_revisao" ? "aprovar_proposta" : "rejeitar_proposta");
+    renderPropostas(propostasPendentes(atualizadas));
+  }catch(e2){
+    card.querySelectorAll("button").forEach(b => b.disabled = false);
+  }
+});
+
+/* ---- Função 2: treino intensivo ---- */
+async function atualizarStatusAliasesTreino(){
+  const elStatus = document.getElementById("statusAliasesTreino");
+  const memoria = await obterMemoria();
+  const n = Object.keys(memoria.aliases || {}).length;
+  elStatus.textContent = n >= 3
+    ? `${n} pergunta${n===1?"":"s"} ensinada${n===1?"":"s"} ${n===1?"disponível":"disponíveis"} para treino.`
+    : `⚠️ O botão "Treinar agora" está desativado (a cinzento) porque ainda só ensinou ${n} pergunta${n===1?"":"s"} — precisa de pelo menos 3. Ensine perguntas na aba "Perguntar" (quando a FARMA não reconhecer uma pergunta, aparece a opção de a ensinar) e volte aqui.`;
+  const btnTreinar = document.getElementById("btnTreinarAgora");
+  btnTreinar.disabled = n < 3;
+  btnTreinar.title = n < 3
+    ? `Precisa de pelo menos 3 perguntas ensinadas (tem ${n}) — ver aba "Perguntar".`
+    : "";
+
+  let treinoLocal = null;
+  try{ treinoLocal = await dataStore.getConfig("farmaTreinoLocal"); }catch(e){ /* segue sem treino local */ }
+  document.getElementById("btnReverterTreino").style.display = (treinoLocal && treinoLocal.aceite) ? "inline-block" : "none";
+  if(treinoLocal && treinoLocal.aceite) renderRelatorioTreino(treinoLocal.relatorio, true);
+
+  let configMultifarma = null;
+  try{ configMultifarma = await dataStore.getConfig("farmaAprendizagemMultifarma"); }catch(e){ /* fica desativado */ }
+  document.getElementById("chkUsarPartilhado").disabled = !partilhaAtiva(configMultifarma);
+}
+function renderRelatorioTreino(relatorio, jaAtivo){
+  const el = document.getElementById("relatorioTreino");
+  if(!relatorio){ el.innerHTML = ""; return; }
+  if(relatorio.motivo){
+    el.innerHTML = `<div class="relatorio-treino">${escapeHtml(relatorio.motivo)}</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="relatorio-treino">
+    ${jaAtivo ? "<b>✓ Modelo local ativo nesta farmácia.</b><br>" : ""}
+    <b>${Math.round(relatorio.exatidaoValidacao*100)}%</b> de exatidão na validação · <b>${Math.round(relatorio.sanidade*100)}%</b> na verificação de sanidade (mínimo ${Math.round(LIMIAR_SANIDADE_MINIMO*100)}%)<br>
+    ${relatorio.totalExemplos} exemplos usados (${relatorio.aliasesIncluidos} ensinados nesta farmácia${relatorio.padroesPartilhadosIncluidos ? `, ${relatorio.padroesPartilhadosIncluidos} padrões partilhados` : ""})<br>
+    Treinado em ${escapeHtml(new Date(relatorio.treinadoEm).toLocaleString("pt-PT"))}
+  </div>`;
+}
+document.getElementById("btnTreinarAgora").addEventListener("click", async () => {
+  const btn = document.getElementById("btnTreinarAgora");
+  const status = document.getElementById("statusTreino");
+  btn.disabled = true;
+  status.className = "aprender-status";
+  status.textContent = "A treinar — isto demora alguns segundos, sem bloquear o resto da app…";
+  try{
+    const memoria = await obterMemoria();
+    const aliasesTexto = Object.entries(memoria.aliases || {});
+    let padroesPartilhados = [];
+    if(document.getElementById("chkUsarPartilhado").checked){
+      try{
+        const partilhado = await obterConhecimentoPartilhado();
+        const pesosBase = await obterPesosRede();
+        padroesPartilhados = filtrarPadroesRecebidos(partilhado.padroes, pesosBase ? pesosBase.intents : []);
+      }catch(e){ /* segue o treino sem padrões partilhados se a rede falhar */ }
+    }
+    const resultado = await treinarLocal(aliasesTexto, { padroesPartilhados });
+    if(resultado.aceite){
+      await dataStore.setConfig("farmaTreinoLocal", resultado);
+      pesosLocaisCache = resultado.pesos;
+      status.className = "aprender-status sucesso";
+      status.textContent = "Treino concluído e aceite.";
+      document.getElementById("btnReverterTreino").style.display = "inline-block";
+      window.ModuleChrome.registarUso("farma-ia", "treinar_local");
+    }else{
+      status.className = "aprender-status erro";
+      status.textContent = "Treino não aceite — mantidos os pesos anteriores.";
+    }
+    renderRelatorioTreino(resultado.relatorio, resultado.aceite);
+  }catch(e){
+    // ponto 46: nunca mostrar só "não foi possível" sem motivo — mostrar
+    // sempre o detalhe real do erro (e registá-lo na consola), para o
+    // problema ser diagnosticável em vez de um botão que "não faz nada".
+    console.error("FARMA IA — falha ao treinar localmente:", e);
+    status.className = "aprender-status erro";
+    status.textContent = "Não foi possível treinar agora (" + (e && e.message ? e.message : "erro inesperado") + "). Tente novamente — se persistir, avise o suporte com esta mensagem.";
+  }finally{
+    btn.disabled = false;
+  }
+});
+document.getElementById("btnReverterTreino").addEventListener("click", async () => {
+  try{ await dataStore.setConfig("farmaTreinoLocal", null); }catch(e){ /* melhor esforço */ }
+  pesosLocaisCache = null;
+  document.getElementById("btnReverterTreino").style.display = "none";
+  document.getElementById("relatorioTreino").innerHTML = "";
+  document.getElementById("statusTreino").className = "aprender-status";
+  document.getElementById("statusTreino").textContent = "Revertido para o modelo padrão.";
+  window.ModuleChrome.registarUso("farma-ia", "reverter_treino_local");
+});
+
+/* ---- Função 3: aprender por leitura ---- */
+let baseConhecimentoCache = undefined;
+async function obterBaseConhecimento(){
+  if(baseConhecimentoCache === undefined){
+    try{
+      const bruto = await dataStore.getAsset("farmaBaseConhecimento");
+      baseConhecimentoCache = bruto ? JSON.parse(bruto) : [];
+    }catch(e){ baseConhecimentoCache = []; }
+  }
+  return baseConhecimentoCache;
+}
+async function gravarBaseConhecimento(base){
+  baseConhecimentoCache = base;
+  await dataStore.setAsset("farmaBaseConhecimento", JSON.stringify(base));
+}
+async function carregarDocumentosLidos(){
+  const base = await obterBaseConhecimento();
+  renderDocumentosLidos(listarDocumentos(base));
+}
+function renderDocumentosLidos(docs){
+  const lista = document.getElementById("listaDocumentosLidos");
+  if(!docs.length){
+    lista.innerHTML = `<div class="vazio">Ainda não carregou nenhum documento.</div>`;
+    return;
+  }
+  lista.innerHTML = docs.map(d => `
+    <div class="doc-item" data-ficheiro="${escapeHtml(d.ficheiro)}">
+      <span>${escapeHtml(d.ficheiro)} — ${d.totalExcertos} excerto${d.totalExcertos===1?"":"s"}</span>
+      <button type="button" class="esquecer" data-esquecer="${escapeHtml(d.ficheiro)}">Esquecer</button>
+    </div>
+  `).join("");
+}
+document.getElementById("dropZoneLeitura").addEventListener("click", () => document.getElementById("inputFicheiroLeitura").click());
+document.getElementById("inputFicheiroLeitura").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if(!file) return;
+  const status = document.getElementById("statusLeitura");
+  status.className = "aprender-status";
+  status.textContent = `A ler "${file.name}"…`;
+  document.getElementById("relatorioLeitura").innerHTML = "";
+  try{
+    const texto = await extrairTextoDeFicheiro(file);
+    const { relatorio, itens } = prepararDocumento(file.name, texto, new Date());
+    const baseAtual = await obterBaseConhecimento();
+    const novaBase = acrescentarAoConhecimento(baseAtual, itens);
+    await gravarBaseConhecimento(novaBase);
+    status.className = "aprender-status sucesso";
+    status.textContent = `"${file.name}" aprendido: ${relatorio.totalExcertos} excerto${relatorio.totalExcertos===1?"":"s"}.`;
+    if(relatorio.amostra && relatorio.amostra.length){
+      document.getElementById("relatorioLeitura").innerHTML = `<div class="relatorio-treino"><b>Amostra do que foi lido:</b><br>${relatorio.amostra.map(a => escapeHtml(a)).join("<br>…<br>")}</div>`;
+    }
+    carregarDocumentosLidos();
+    window.ModuleChrome.registarUso("farma-ia", "aprender_por_leitura");
+  }catch(err){
+    status.className = "aprender-status erro";
+    status.textContent = "Não foi possível ler este ficheiro: " + (err.message || err);
+  }
+});
+document.getElementById("listaDocumentosLidos").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-esquecer]");
+  if(!btn) return;
+  btn.disabled = true;
+  try{
+    const baseAtual = await obterBaseConhecimento();
+    const novaBase = esquecerDocumento(baseAtual, btn.dataset.esquecer);
+    await gravarBaseConhecimento(novaBase);
+    carregarDocumentosLidos();
+    window.ModuleChrome.registarUso("farma-ia", "esquecer_documento");
+  }catch(e2){ btn.disabled = false; }
+});
+
+/* ---- Função 4: aprendizagem multifarma ---- */
+async function carregarEstadoMultifarma(){
+  let config = null;
+  try{ config = await dataStore.getConfig("farmaAprendizagemMultifarma"); }catch(e){ /* fica desativado */ }
+  const ativa = partilhaAtiva(config);
+  document.getElementById("chkMultifarmaAtiva").checked = ativa;
+  document.getElementById("multifarmaConteudo").style.display = ativa ? "block" : "none";
+  if(ativa) atualizarResumoMultifarma();
+}
+document.getElementById("chkMultifarmaAtiva").addEventListener("change", async (e) => {
+  const ativa = e.target.checked;
+  try{ await dataStore.setConfig("farmaAprendizagemMultifarma", { ativo: ativa }); }catch(err){ /* melhor esforço */ }
+  document.getElementById("multifarmaConteudo").style.display = ativa ? "block" : "none";
+  document.getElementById("statusAliasesTreino") && atualizarStatusAliasesTreino(); // reflete o toggle no checkbox da Função 2
+  window.ModuleChrome.registarUso("farma-ia", ativa ? "ativar_multifarma" : "desativar_multifarma");
+  if(ativa) atualizarResumoMultifarma();
+});
+async function atualizarResumoMultifarma(tocarStatus = true){
+  const status = document.getElementById("statusMultifarma");
+  // `tocarStatus = false` quando é chamado logo a seguir a "Contribuir" (o botão
+  // já deixou a sua própria mensagem de sucesso no mesmo elemento — atualizar o
+  // resumo não a deve apagar por baixo).
+  if(tocarStatus){ status.className = "aprender-status"; status.textContent = "a atualizar…"; }
+  try{
+    const partilhado = await obterConhecimentoPartilhado();
+    const resumo = resumirConhecimentoPartilhado(partilhado);
+    document.getElementById("resumoMultifarma").innerHTML = `
+      <div class="stat"><b>${resumo.totalPadroes}</b><span>padrões partilhados</span></div>
+      <div class="stat"><b>${resumo.farmaciasContribuintes}</b><span>farmácias contribuintes</span></div>
+    `;
+    if(tocarStatus) status.textContent = "";
+  }catch(e){
+    status.className = "aprender-status erro";
+    status.textContent = "Não foi possível obter o conhecimento partilhado.";
+  }
+}
+document.getElementById("btnAtualizarMultifarma").addEventListener("click", atualizarResumoMultifarma);
+document.getElementById("btnContribuirMultifarma").addEventListener("click", async () => {
+  const btn = document.getElementById("btnContribuirMultifarma");
+  const status = document.getElementById("statusMultifarma");
+  btn.disabled = true;
+  status.className = "aprender-status";
+  status.textContent = "a contribuir…";
+  try{
+    const memoria = await obterMemoria();
+    const aliasesTexto = Object.entries(memoria.aliases || {});
+    const contribuicao = prepararContribuicao(aliasesTexto);
+    const resultado = await contribuirConhecimento(contribuicao);
+    status.className = "aprender-status sucesso";
+    status.textContent = `Contribuição enviada: ${resultado.padroesAceites} ${resultado.padroesAceites===1?"padrão aceite":"padrões aceites"}.`;
+    window.ModuleChrome.registarUso("farma-ia", "contribuir_multifarma");
+    atualizarResumoMultifarma(false);
+  }catch(e){
+    status.className = "aprender-status erro";
+    status.textContent = "Não foi possível contribuir agora.";
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+/* ---------------- arranque ---------------- */
+carregarAlertas();
+</script>
+</body>
+</html>

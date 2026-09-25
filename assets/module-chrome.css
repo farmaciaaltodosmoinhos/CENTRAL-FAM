@@ -1,0 +1,57 @@
+/* =====================================================================
+   MODULE CHROME — incluído por todos os modulos/*.html
+   (assets/module-chrome.css + assets/module-chrome.js)
+
+   Substitui o antigo padrão "sidebar interna + link flutuante 'Voltar à
+   Central'" (que se somava à sidebar da Central e apertava o ecrã, e cujo
+   link ficava sobreposto a outros elementos) por:
+     - uma barra INFERIOR fixa e compacta para a navegação interna do
+       módulo (as suas próprias secções/ferramentas), só nos módulos que
+       realmente têm várias secções;
+     - o link "Voltar à Central" só é mostrado quando o módulo é aberto
+       sozinho, fora da Central (a Central já mostra "Início" sempre
+       visível por cima do <iframe>, por isso lá dentro seria redundante).
+   ===================================================================== */
+:root{ --mc-bar-h:58px; }
+
+.mc-standalone-bar{
+  display:none; align-items:center; gap:8px; padding:10px 16px;
+  background:linear-gradient(175deg,#1f543e 0%,#132a20 100%); color:#eafaf0;
+  position:sticky; top:0; z-index:80;
+}
+.mc-standalone-bar.mc-show{ display:flex; }
+.mc-standalone-bar a{ color:#eafaf0; text-decoration:none; font-weight:700; font-size:.85rem; display:flex; align-items:center; gap:6px; }
+.mc-standalone-bar a:hover{ text-decoration:underline; }
+
+/* Tamanho normalizado do logótipo da farmácia em todos os módulos —
+   antes cada ficheiro tinha o seu próprio tamanho (alguns 48px, outros
+   muito maiores), agora um só tamanho legível e consistente. */
+.mc-logo{ height:40px; width:auto; max-width:170px; object-fit:contain; display:block; }
+
+.mc-bottom-bar{
+  position:fixed; left:0; right:0; bottom:0; z-index:90;
+  display:flex; gap:4px; overflow-x:auto; -webkit-overflow-scrolling:touch; align-items:stretch;
+  background:linear-gradient(175deg,#1f543e 0%,#132a20 100%);
+  padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));
+  box-shadow:0 -6px 20px rgba(0,0,0,.18);
+}
+.mc-bottom-bar::-webkit-scrollbar{ height:0; }
+.mc-bb-item{
+  flex:0 0 auto; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+  background:transparent; border:none; color:#b9d9c5; padding:6px 14px; border-radius:14px; cursor:pointer;
+  font-size:.64rem; font-weight:700; white-space:nowrap; transition:background .15s ease,color .15s ease; min-width:62px;
+}
+.mc-bb-item .mc-bb-icon{ font-size:1.05rem; line-height:1; }
+.mc-bb-item:hover{ background:rgba(255,255,255,.08); color:#eafaf0; }
+.mc-bb-item.active{ background:rgba(255,255,255,.18); color:#fff; }
+.mc-bb-back{
+  flex:0 0 auto; display:flex; align-items:center; gap:6px; background:rgba(255,255,255,.1); border:none; cursor:pointer;
+  color:#eafaf0; padding:0 14px; border-radius:14px; font-size:.7rem; font-weight:700; margin-right:4px;
+}
+.mc-bb-back:hover{ background:rgba(255,255,255,.18); }
+
+body.mc-has-bottom-bar{ padding-bottom:calc(var(--mc-bar-h) + env(safe-area-inset-bottom,0px)) !important; }
+
+@media (max-width:600px){
+  .mc-bb-item{ min-width:56px; padding:6px 10px; }
+}
